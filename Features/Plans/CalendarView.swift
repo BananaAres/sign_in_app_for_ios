@@ -96,7 +96,14 @@ struct CalendarView: View {
                         } else {
                             WeekGridView(
                                 selectedDate: $selectedDate,
-                                plans: plans
+                                plans: plans,
+                                onPlanSelected: { plan in
+                                    selectedDate = plan.startTime
+                                    selectedDateItem = nil
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                        selectedDateItem = SelectedDateItem(date: plan.startTime)
+                                    }
+                                }
                             )
                         }
                     }
@@ -329,7 +336,7 @@ struct MonthlyGoalsCard: View {
 
                                     if items[index].isCompleted {
                                         Image(systemName: "checkmark")
-                                            .font(.footnote)
+                                            .font(.title3)
                                             .foregroundColor(AppTheme.accentOrange)
                                     }
                                 }
@@ -611,6 +618,7 @@ struct MonthPlanEditorSheet: View {
                 }
                 .padding(.horizontal, 20)
             }
+            .scrollContentBackground(.hidden)
 
             Button {
                 items = localItems

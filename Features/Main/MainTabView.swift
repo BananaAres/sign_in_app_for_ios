@@ -5,24 +5,32 @@ struct MainTabView: View {
     @State private var selectedTab = 0
     
     var body: some View {
-        TabView(selection: $selectedTab) {
-            PlansView()
-                .tabItem {
-                    Label("计划", systemImage: "calendar")
-                }
-                .tag(0)
-            
-            StatsView()
-                .tabItem {
-                    Label("统计", systemImage: "chart.bar")
-                }
-                .tag(1)
-            
-            ProfileView()
-                .tabItem {
-                    Label("我的", systemImage: "person")
-                }
-                .tag(2)
+        ZStack {
+            AppTheme.background
+                .ignoresSafeArea()
+
+            TabView(selection: $selectedTab) {
+                PlansView()
+                    .tabItem {
+                        Label("计划", systemImage: "calendar")
+                    }
+                    .tag(0)
+                
+                StatsView()
+                    .tabItem {
+                        Label("统计", systemImage: "chart.bar")
+                    }
+                    .tag(1)
+                
+                ProfileView()
+                    .tabItem {
+                        Label("我的", systemImage: "person")
+                    }
+                    .tag(2)
+            }
+            .background(AppTheme.background)
+            .toolbarBackground(AppTheme.background, for: .tabBar)
+            .toolbarBackground(.visible, for: .tabBar)
         }
         .accentColor(AppTheme.accentGreen)
         .sheet(isPresented: $authManager.showLoginSheet) {

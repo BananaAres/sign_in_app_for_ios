@@ -49,6 +49,7 @@ struct MembershipView: View {
                     .padding(.top, 12)
                     .padding(.bottom, 24)
                 }
+                .scrollContentBackground(.hidden)
             }
             .navigationTitle("会员服务")
             .toolbar {

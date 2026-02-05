@@ -12,6 +12,7 @@ struct CheckInStats: Codable {
     var totalCheckIns: Int
     var thisWeekCheckIns: Int
     var thisMonthCheckIns: Int
+    var checkInDaysInRange: Int
     var streakDays: Int // 连续打卡天数
     var weeklyData: [DailyStats] // 最近7天的数据
 }

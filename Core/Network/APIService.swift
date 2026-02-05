@@ -218,6 +218,7 @@ enum MockData {
         totalCheckIns: 15,
         thisWeekCheckIns: 5,
         thisMonthCheckIns: 12,
+        checkInDaysInRange: 5,
         streakDays: 3,
         weeklyData: [
             DailyStats(id: "1", date: Date().addingTimeInterval(-86400 * 6), completedCount: 2, totalCount: 2),

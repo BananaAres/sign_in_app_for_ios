@@ -95,8 +95,10 @@ enum RepeatMode: String, Codable {
     case none = "none"           // 不重复
     case daily = "daily"         // 每天重复
     case weekdays = "weekdays"   // 工作日重复
-    case weekly = "weekly"        // 当周重复（每周同一天）
-    case monthly = "monthly"      // 当月重复（每月同一天）
+    case weekly = "weekly"        // 每周重复（每周同一天）
+    case monthly = "monthly"      // 每月重复（每月同一天）
+    case weeklyInCurrent = "weekly_in_current"   // 当周重复（本周内每天）
+    case monthlyInCurrent = "monthly_in_current" // 当月重复（本月内每天）
     
     var displayName: String {
         switch self {
@@ -105,6 +107,8 @@ enum RepeatMode: String, Codable {
         case .weekdays: return "工作日重复"
         case .weekly: return "每周重复"
         case .monthly: return "每月重复"
+        case .weeklyInCurrent: return "当周重复"
+        case .monthlyInCurrent: return "当月重复"
         }
     }
 }

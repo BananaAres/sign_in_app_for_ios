@@ -16,12 +16,20 @@ struct DayTimelineView: View {
     @State private var allPlans: [Plan]
     @State private var activeDeletePlanId: String?
     @State private var editingPlan: Plan?
+    @State private var pendingDeletePlan: Plan?
+    @State private var showDeleteDialog = false
     
     private let hours = Array(0...23)
     private let hourHeight: CGFloat = 60
     private let minuteStep: Int = 30
     private let dayEndMinute: Int = 24 * 60
     private let calendar = Calendar.current
+    private let chinaCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.firstWeekday = 2
+        calendar.minimumDaysInFirstWeek = 4
+        return calendar
+    }()
     
     private var dateString: String {
         let formatter = DateFormatter()
@@ -32,6 +40,10 @@ struct DayTimelineView: View {
 
     private var isReadOnly: Bool {
         calendar.startOfDay(for: currentDate) < calendar.startOfDay(for: Date())
+    }
+
+    private var canToggleCompletion: Bool {
+        calendar.isDate(currentDate, inSameDayAs: Date())
     }
 
     private var currentPlans: [Plan] {
@@ -160,7 +172,7 @@ struct DayTimelineView: View {
                                         date: currentDate,
                                         hourHeight: hourHeight,
                                         onDelete: {
-                                            deletePlan(plan)
+                                            requestDelete(plan)
                                         },
                                         onEdit: {
                                             activeDeletePlanId = nil
@@ -171,6 +183,7 @@ struct DayTimelineView: View {
                                         },
                                         isSelecting: isSelecting,
                                         isReadOnly: isReadOnly,
+                                        canToggleComplete: canToggleCompletion,
                                         activeDeletePlanId: $activeDeletePlanId
                                     )
                                 }
@@ -239,6 +252,33 @@ struct DayTimelineView: View {
                         }
                     })
                 )
+            }
+            .confirmationDialog(
+                "删除计划",
+                isPresented: $showDeleteDialog,
+                titleVisibility: .visible,
+                presenting: pendingDeletePlan
+            ) { plan in
+                Button("仅删除此计划", role: .destructive) {
+                    deleteSinglePlan(plan)
+                    pendingDeletePlan = nil
+                }
+                if plan.repeatGroupId != nil {
+                    Button("删除全部重复计划", role: .destructive) {
+                        deleteRepeatGroup(for: plan)
+                        pendingDeletePlan = nil
+                    }
+                }
+                Button("取消", role: .cancel) {
+                    pendingDeletePlan = nil
+                }
+            } message: { _ in
+                Text("这是一个重复计划，要删除哪部分？")
+            }
+            .onChange(of: showDeleteDialog) { isPresented in
+                if !isPresented {
+                    pendingDeletePlan = nil
+                }
             }
         }
         .interactiveDismissDisabled(isSelecting)
@@ -360,19 +400,40 @@ struct DayTimelineView: View {
         return false
     }
 
-    private func deletePlan(_ plan: Plan) {
+    private func requestDelete(_ plan: Plan) {
         guard !isReadOnly else { return }
-        allPlans.removeAll { $0.id == plan.id }
         if activeDeletePlanId == plan.id {
             activeDeletePlanId = nil
         }
+        if plan.repeatGroupId != nil {
+            pendingDeletePlan = plan
+            showDeleteDialog = true
+        } else {
+            deleteSinglePlan(plan)
+        }
+    }
+
+    private func deleteSinglePlan(_ plan: Plan) {
+        allPlans.removeAll { $0.id == plan.id }
         Task {
             try? await planStore.deletePlan(id: plan.id)
         }
     }
 
+    private func deleteRepeatGroup(for plan: Plan) {
+        guard let groupId = plan.repeatGroupId else { return }
+        allPlans.removeAll { $0.repeatGroupId == groupId }
+        Task {
+            try? await planStore.deletePlansInRepeatGroup(
+                groupId: groupId,
+                from: Date.distantPast,
+                excluding: nil
+            )
+        }
+    }
+
     private func togglePlanCompletion(_ plan: Plan) {
-        guard !isReadOnly else { return }
+        guard !isReadOnly, canToggleCompletion else { return }
         guard let index = allPlans.firstIndex(where: { $0.id == plan.id }) else { return }
         allPlans[index].isCompleted.toggle()
         allPlans[index].updatedAt = Date()
@@ -524,6 +585,7 @@ struct PlanBlockView: View {
     let onToggleComplete: () -> Void
     let isSelecting: Bool
     let isReadOnly: Bool
+    let canToggleComplete: Bool
     @Binding var activeDeletePlanId: String?
     
     private let dayEndMinute: Int = 24 * 60
@@ -567,7 +629,7 @@ struct PlanBlockView: View {
 
                 if plan.isCompleted {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.caption)
+                        .font(.title3)
                         .foregroundColor(.white.opacity(0.9))
                 }
             }
@@ -647,7 +709,7 @@ struct PlanBlockView: View {
             .frame(height: height)
             .contentShape(Rectangle())
             .onTapGesture {
-                guard !isReadOnly, !isSelecting else { return }
+                guard !isReadOnly, canToggleComplete, !isSelecting else { return }
                 withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
                     activeDeletePlanId = nil
                 }
@@ -763,6 +825,12 @@ struct PlanEditorView: View {
     private let dayEndMinute: Int = 24 * 60
     private let timeStep: Int = 5
     private let calendar = Calendar.current
+    private let chinaCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.firstWeekday = 2
+        calendar.minimumDaysInFirstWeek = 4
+        return calendar
+    }()
     
     init(date: Date, startMinute: Int = 0, endMinute: Int = 0, mode: PlanEditorMode) {
         self.date = date
@@ -957,18 +1025,30 @@ struct PlanEditorView: View {
 
                             TimelineFormCard(title: "重复") {
                                 Picker("重复", selection: $repeatMode) {
-                                    ForEach([RepeatMode.none, .daily, .weekdays, .weekly, .monthly], id: \.self) { mode in
+                                    ForEach(
+                                        [
+                                            RepeatMode.none,
+                                            .daily,
+                                            .weekdays,
+                                            .weekly,
+                                            .monthly,
+                                            .weeklyInCurrent,
+                                            .monthlyInCurrent
+                                        ],
+                                        id: \.self
+                                    ) { mode in
                                         Text(mode.displayName)
                                             .tag(mode)
                                     }
                                 }
                                 .pickerStyle(.wheel)
-                                .frame(height: 140)
+                                .frame(height: 160)
                             }
                         }
                         .padding(.horizontal, 20)
                         .padding(.bottom, 24)
                     }
+                    .scrollContentBackground(.hidden)
                 }
             }
         }
@@ -1072,7 +1152,7 @@ struct PlanEditorView: View {
             let endDay = repeatEndDate(for: startDay)
             dates = monthlyDates(from: startDay, to: endDay)
                 .filter { $0 >= regenStart && calendar.startOfDay(for: $0) != startDay }
-        case .daily, .weekdays, .weekly:
+        case .daily, .weekdays, .weekly, .weeklyInCurrent, .monthlyInCurrent:
             dates = repeatDates(from: regenStart, mode: repeatMode)
                 .filter { calendar.startOfDay(for: $0) != startDay }
         case .none:
@@ -1101,7 +1181,7 @@ struct PlanEditorView: View {
     }
 
     private func repeatDates(from startDay: Date, mode: RepeatMode) -> [Date] {
-        let endDay = repeatEndDate(for: startDay)
+        let endDay = repeatEndDate(for: startDay, mode: mode)
         switch mode {
         case .none:
             return [startDay]
@@ -1116,12 +1196,25 @@ struct PlanEditorView: View {
             return strideDates(from: startDay, to: endDay, stepDays: 7) { _ in true }
         case .monthly:
             return monthlyDates(from: startDay, to: endDay)
+        case .weeklyInCurrent, .monthlyInCurrent:
+            return strideDates(from: startDay, to: endDay, stepDays: 1) { _ in true }
         }
     }
 
-    private func repeatEndDate(for startDay: Date) -> Date {
-        let year = calendar.component(.year, from: startDay)
-        return calendar.date(from: DateComponents(year: year, month: 12, day: 31, hour: 23, minute: 59)) ?? startDay
+    private func repeatEndDate(for startDay: Date, mode: RepeatMode = .daily) -> Date {
+        switch mode {
+        case .weeklyInCurrent:
+            let startOfWeek = chinaCalendar.date(
+                from: chinaCalendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: startDay)
+            ) ?? startDay
+            return chinaCalendar.date(byAdding: DateComponents(day: 6, hour: 23, minute: 59), to: startOfWeek) ?? startDay
+        case .monthlyInCurrent:
+            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: startDay)) ?? startDay
+            return calendar.date(byAdding: DateComponents(month: 1, day: 0, second: -1), to: startOfMonth) ?? startDay
+        default:
+            let year = calendar.component(.year, from: startDay)
+            return calendar.date(from: DateComponents(year: year, month: 12, day: 31, hour: 23, minute: 59)) ?? startDay
+        }
     }
 
     private func strideDates(from start: Date, to end: Date, stepDays: Int, include: (Date) -> Bool) -> [Date] {

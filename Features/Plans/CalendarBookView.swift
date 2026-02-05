@@ -218,7 +218,7 @@ struct YearlyPlanRow: View {
 
                 if item.isCompleted {
                     Image(systemName: "checkmark")
-                        .font(.footnote)
+                        .font(.title3)
                         .foregroundColor(AppTheme.accentOrange)
                 }
             }

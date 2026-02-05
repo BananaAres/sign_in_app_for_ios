@@ -4,6 +4,7 @@ import SwiftUI
 struct WeekGridView: View {
     @Binding var selectedDate: Date
     let plans: [Plan]
+    let onPlanSelected: (Plan) -> Void
     
     private let calendar = Calendar.current
     private let hours = Array(0...23) // 全天 0:00 到 23:00
@@ -88,7 +89,8 @@ struct WeekGridView: View {
                                     columnWidth: dayColumnWidth,
                                     rowHeight: rowHeight,
                                     headerHeight: headerHeight,
-                                    xOffset: timeColumnWidth + CGFloat(index) * dayColumnWidth
+                                    xOffset: timeColumnWidth + CGFloat(index) * dayColumnWidth,
+                                    onTap: { onPlanSelected(plan) }
                                 )
                             }
                         }
@@ -218,7 +220,7 @@ struct WeekTimeRow: View {
     var body: some View {
         HStack(spacing: 0) {
             // 时间标签
-            Text(String(format: "%02d:00", hour))
+            Text("\(hour):00")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .frame(width: timeColumnWidth, alignment: .trailing)
@@ -252,12 +254,13 @@ struct WeekTimeCell: View {
         Rectangle()
             .fill(isEvenRow ? Color(.systemGray6).opacity(0.35) : Color.clear)
             .frame(width: width, height: height)
-        .overlay(
-            Rectangle()
-                .fill(Color.gray.opacity(0.1))
-                .frame(width: 1),
-            alignment: .trailing
-        )
+            .overlay(
+                Rectangle()
+                    .fill(Color.gray.opacity(0.1))
+                    .frame(width: 1),
+                alignment: .trailing
+            )
+}
 }
 
 // MARK: - 周视图计划块（整块显示）
@@ -267,6 +270,7 @@ struct WeekPlanBlock: View {
     let rowHeight: CGFloat
     let headerHeight: CGFloat
     let xOffset: CGFloat
+    let onTap: () -> Void
     
     private let calendar = Calendar.current
     private let dayEndMinute: Int = 24 * 60
@@ -304,24 +308,34 @@ struct WeekPlanBlock: View {
         return max(scaled, 18)
     }
     
+    private var displayTitle: String {
+        String(plan.title.prefix(2))
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(plan.title)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white)
-                .lineLimit(1)
-            
-            Text("\(plan.startTimeString)-\(endTimeLabel)")
-                .font(.system(size: 8))
-                .foregroundColor(.white.opacity(0.8))
-                .lineLimit(1)
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayTitle)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .truncationMode(.tail)
+                
+                Text("\(plan.startTimeString)-\(endTimeLabel)")
+                    .font(.system(size: 8))
+                    .foregroundColor(.white.opacity(0.8))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .frame(width: max(0, columnWidth - horizontalInset), alignment: .leading)
+            .frame(height: height)
+            .background(plan.color.gradient)
+            .cornerRadius(6)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .frame(width: max(0, columnWidth - horizontalInset), alignment: .leading)
-        .frame(height: height)
-        .background(plan.color.gradient)
-        .cornerRadius(6)
+        .buttonStyle(.plain)
         .offset(x: xOffset + horizontalInset / 2, y: topOffset)
+        .contentShape(Rectangle())
     }
 }
