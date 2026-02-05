@@ -15,18 +15,24 @@ struct MainTabView: View {
                         Label("计划", systemImage: "calendar")
                     }
                     .tag(0)
+
+                TodayView()
+                    .tabItem {
+                        Label("今日", systemImage: "sun.max")
+                    }
+                    .tag(1)
                 
                 StatsView()
                     .tabItem {
                         Label("统计", systemImage: "chart.bar")
                     }
-                    .tag(1)
+                    .tag(2)
                 
                 ProfileView()
                     .tabItem {
                         Label("我的", systemImage: "person")
                     }
-                    .tag(2)
+                    .tag(3)
             }
             .background(AppTheme.background)
             .toolbarBackground(AppTheme.background, for: .tabBar)

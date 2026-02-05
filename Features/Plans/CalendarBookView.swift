@@ -72,7 +72,7 @@ struct YearBookCoverView: View {
 
                 YearlyPlanCard(
                     year: currentYear,
-                    title: "不积跬步，无以至千里",
+                    title: dailyQuote,
                     items: $yearPlanItems,
                     onEdit: {
                         showYearEditor = true
@@ -119,6 +119,127 @@ struct YearBookCoverView: View {
     private func saveYearPlan(_ items: [GoalItem]) {
         PlanTextStore.saveGoals(items, key: PlanTextStore.yearKey(for: Date()))
     }
+
+    private var dailyQuote: String {
+        let today = calendar.startOfDay(for: Date())
+        let dayOfYear = calendar.ordinality(of: .day, in: .year, for: today) ?? 1
+        let index = (dayOfYear - 1) % motivationQuotes.count
+        return motivationQuotes[index]
+    }
+
+    private let motivationQuotes: [String] = [
+        "不积跬步，无以至千里",
+        "千里之行，始于足下",
+        "志不立，天下无可成之事",
+        "凡事预则立，不预则废",
+        "知之者不如好之者，好之者不如乐之者",
+        "业精于勤，荒于嬉",
+        "不以规矩，不能成方圆",
+        "君子藏器于身，待时而动",
+        "学而不思则罔，思而不学则殆",
+        "路虽远，行则将至",
+        "事虽难，做则必成",
+        "心有所向，日复一日，必有精进",
+        "胜人者有力，自胜者强",
+        "天行健，君子以自强不息",
+        "地势坤，君子以厚德载物",
+        "贵有恒，何必三更起五更睡",
+        "为者常成，行者常至",
+        "一寸光阴一寸金",
+        "不经历风雨，怎能见彩虹",
+        "有志者事竟成",
+        "专注一事，必有所得",
+        "自律给我自由",
+        "努力是幸运的伏笔",
+        "把握今天，胜过无数明天",
+        "日拱一卒，功不唐捐",
+        "坚持就是胜利",
+        "做最好的自己",
+        "你的努力，时间看得见",
+        "越努力，越幸运",
+        "每天进步一点点",
+        "踏实做事，厚积薄发",
+        "不惧慢，只怕停",
+        "磨炼使人成长",
+        "心若向阳，无畏风霜",
+        "有梦想，就有方向",
+        "信念，是通向成功的桥梁",
+        "敢于开始，才有结果",
+        "现在开始，永远不晚",
+        "今天的坚持，是明天的实力",
+        "努力从不辜负认真",
+        "自律的人最自由",
+        "一分耕耘，一分收获",
+        "不怕路长，只怕志短",
+        "目标明确，行动有力",
+        "热爱可抵岁月漫长",
+        "认真是成功的开始",
+        "专注成就卓越",
+        "把小事做好，就是不平凡",
+        "梦想不是空想，而是行动",
+        "勇敢迈出第一步",
+        "积累决定高度",
+        "保持热情，保持成长",
+        "真正的强大是自我超越",
+        "心有所愿，行而不辍",
+        "耐心是最好的力量",
+        "保持清醒，保持努力",
+        "你走过的路，都会算数",
+        "选择比努力更重要，努力让选择更好",
+        "只要开始，就已经赢了一半",
+        "越过山丘，依旧热爱生活",
+        "平凡的坚持，成就不凡",
+        "把今天做成最好的一天",
+        "今天的行动决定明天的高度",
+        "别怕慢，重要的是别停",
+        "成长是每天的自我对话",
+        "把时间用在值得的事上",
+        "成功来自日积月累",
+        "别让懒惰偷走你的梦想",
+        "目标清晰，路就不迷茫",
+        "保持专注，成果自然来",
+        "心向远方，脚踏实地",
+        "相信自己，胜过一切",
+        "把热爱变成习惯",
+        "向光而行，必有回响",
+        "有恒心者有恒业",
+        "每一次努力都是在雕刻自己",
+        "今天的你比昨天更好",
+        "坚定信念，终能到达",
+        "让行动成为最好的语言",
+        "持续行动，持续成长",
+        "你可以慢，但不要停",
+        "用坚持换取改变",
+        "把目标拆成今天的任务",
+        "小步前进也在靠近目标",
+        "努力就是最好的天赋",
+        "生活不止眼前，行动创造远方",
+        "认真对待每一次开始",
+        "越努力，越有底气",
+        "永远保持学习的心态",
+        "对自己负责，就是最强的动力",
+        "用结果证明自己",
+        "不放弃的人，运气不会差",
+        "今天的专注成就明天的能力",
+        "向内求，向前走",
+        "坚定方向，脚踏实地",
+        "宁可慢一点，也要不停下",
+        "把努力做到极致",
+        "目标在前，脚步不停",
+        "让习惯成就自律",
+        "行动胜过一切空想",
+        "把今天过成你想要的样子",
+        "无畏前路，步步向上",
+        "愿你眼里有光，心里有梦",
+        "努力的样子最美",
+        "不断前行，终会抵达",
+        "用心做事，时间自有答案",
+        "去做，才会有结果",
+        "每一天都是新的开始",
+        "相信时间的力量",
+        "坚持到底，收获自来",
+        "把自己变强，是最好的选择"
+    ]
 }
 
 struct YearlyPlanCard: View {
@@ -150,40 +271,43 @@ struct YearlyPlanCard: View {
             RibbonView()
                 .padding(.trailing, 18)
 
-            VStack(spacing: 12) {
+            VStack(spacing: 14) {
                 SunBadge()
+                    .padding(.top, -24)
 
-                Text("\(year)")
+                Text(String(year))
                     .font(.system(size: 36, weight: .bold))
                     .foregroundColor(AppTheme.textPrimary)
 
                 Text(title)
                     .font(.callout)
                     .foregroundColor(AppTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 6)
+                    .padding(.top, 2)
 
                 if isPlaceholder {
                     EmptyYearlyGoalsButton {
                         onEdit()
                     }
-                    .padding(.top, 24)
+                    .padding(.top, 28)
                 } else {
                     VStack(spacing: 12) {
                         ForEach(items.indices, id: \.self) { index in
                             YearlyPlanRow(item: $items[index])
                         }
                     }
-                    .padding(.top, 6)
+                    .padding(.top, 12)
 
                     EditYearlyGoalButton {
                         onEdit()
                     }
                     .padding(.top, 10)
-                    .padding(.trailing, 32)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
             .padding(.horizontal, 24)
-            .padding(.vertical, 28)
+            .padding(.vertical, 22)
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .frame(maxWidth: .infinity)
@@ -209,7 +333,7 @@ struct YearlyPlanRow: View {
                     .frame(width: 10, height: 10)
 
                 Text(item.text)
-                    .font(.body)
+                    .font(.system(size: 17, weight: .medium))
                     .foregroundColor(item.isCompleted ? AppTheme.textSecondary.opacity(0.6) : AppTheme.textSecondary)
                     .strikethrough(item.isCompleted, color: AppTheme.textSecondary.opacity(0.6))
                     .lineLimit(1)

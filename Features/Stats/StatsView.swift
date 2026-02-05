@@ -14,8 +14,8 @@ struct StatsView: View {
             ZStack {
                 LinearGradient(
                     colors: [
-                        Color(red: 0.97, green: 0.93, blue: 0.88),
-                        Color(red: 0.96, green: 0.92, blue: 0.88)
+                        AppTheme.statsBackgroundTop,
+                        AppTheme.statsBackgroundBottom
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottom

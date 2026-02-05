@@ -6,6 +6,7 @@ struct SignInAppApp: App {
     @StateObject private var planStore = PlanStore()
     @StateObject private var purchaseManager = PurchaseManager()
     private let persistenceController = PersistenceController.shared
+    @AppStorage("dark_mode_enabled") private var darkModeEnabled = false
     
     init() {
         UIWindow.appearance().backgroundColor = UIColor(AppTheme.background)
@@ -41,6 +42,7 @@ struct SignInAppApp: App {
             .environmentObject(planStore)
             .environmentObject(purchaseManager)
             .environment(\.managedObjectContext, persistenceController.viewContext)
+            .environment(\.colorScheme, darkModeEnabled ? .dark : .light)
             .task {
                 await purchaseManager.start()
             }

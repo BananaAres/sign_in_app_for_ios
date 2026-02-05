@@ -832,9 +832,21 @@ struct PlanEditorView: View {
         return calendar
     }()
     
-    init(date: Date, startMinute: Int = 0, endMinute: Int = 0, mode: PlanEditorMode) {
+    private let allowRepeat: Bool
+    private let allowColor: Bool
+
+    init(
+        date: Date,
+        startMinute: Int = 0,
+        endMinute: Int = 0,
+        allowRepeat: Bool = true,
+        allowColor: Bool = true,
+        mode: PlanEditorMode
+    ) {
         self.date = date
         self.mode = mode
+        self.allowRepeat = allowRepeat
+        self.allowColor = allowColor
         let maxMinute = 24 * 60
         let maxStart = maxMinute - timeStep
         
@@ -858,6 +870,12 @@ struct PlanEditorView: View {
             _note = State(initialValue: plan.note ?? "")
             _selectedColor = State(initialValue: plan.color)
             _repeatMode = State(initialValue: plan.repeatMode)
+        }
+        if !allowRepeat {
+            _repeatMode = State(initialValue: .none)
+        }
+        if !allowColor {
+            _selectedColor = State(initialValue: .orange)
         }
     }
     
@@ -1009,40 +1027,44 @@ struct PlanEditorView: View {
                                 }
                             }
 
-                            TimelineFormCard(title: "颜色") {
-                                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 16) {
-                                    ForEach(PlanColor.allCases, id: \.self) { color in
-                                        ColorPickerButton(
-                                            color: color,
-                                            isSelected: selectedColor == color
-                                        ) {
-                                            selectedColor = color
+                            if allowColor {
+                                TimelineFormCard(title: "颜色") {
+                                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 16) {
+                                        ForEach(PlanColor.allCases, id: \.self) { color in
+                                            ColorPickerButton(
+                                                color: color,
+                                                isSelected: selectedColor == color
+                                            ) {
+                                                selectedColor = color
+                                            }
                                         }
                                     }
+                                    .padding(.vertical, 6)
                                 }
-                                .padding(.vertical, 6)
                             }
 
-                            TimelineFormCard(title: "重复") {
-                                Picker("重复", selection: $repeatMode) {
-                                    ForEach(
-                                        [
-                                            RepeatMode.none,
-                                            .daily,
-                                            .weekdays,
-                                            .weekly,
-                                            .monthly,
-                                            .weeklyInCurrent,
-                                            .monthlyInCurrent
-                                        ],
-                                        id: \.self
-                                    ) { mode in
-                                        Text(mode.displayName)
-                                            .tag(mode)
+                            if allowRepeat {
+                                TimelineFormCard(title: "重复") {
+                                    Picker("重复", selection: $repeatMode) {
+                                        ForEach(
+                                            [
+                                                RepeatMode.none,
+                                                .daily,
+                                                .weekdays,
+                                                .weekly,
+                                                .monthly,
+                                                .weeklyInCurrent,
+                                                .monthlyInCurrent
+                                            ],
+                                            id: \.self
+                                        ) { mode in
+                                            Text(mode.displayName)
+                                                .tag(mode)
+                                        }
                                     }
+                                    .pickerStyle(.wheel)
+                                    .frame(height: 160)
                                 }
-                                .pickerStyle(.wheel)
-                                .frame(height: 160)
                             }
                         }
                         .padding(.horizontal, 20)
@@ -1089,8 +1111,9 @@ struct PlanEditorView: View {
     private func buildPlansForCreate() -> [Plan] {
         let durationMinutes = max(0, endMinuteValue - startMinuteValue)
         let startDay = calendar.startOfDay(for: date)
-        let dates = repeatDates(from: startDay, mode: repeatMode)
-        let groupId = repeatMode == .none ? nil : UUID().uuidString
+        let effectiveRepeatMode = allowRepeat ? repeatMode : .none
+        let dates = repeatDates(from: startDay, mode: effectiveRepeatMode)
+        let groupId = effectiveRepeatMode == .none ? nil : UUID().uuidString
         return dates.map { occurrence in
             let start = timeDate(from: startMinuteValue, on: occurrence)
             let end = calendar.date(byAdding: .minute, value: durationMinutes, to: start) ?? start
@@ -1102,7 +1125,7 @@ struct PlanEditorView: View {
                 startTime: start,
                 endTime: end,
                 color: selectedColor,
-                repeatMode: repeatMode,
+                repeatMode: effectiveRepeatMode,
                 isCompleted: false,
                 createdAt: Date(),
                 updatedAt: Date()
