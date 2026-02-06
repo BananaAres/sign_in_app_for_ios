@@ -8,6 +8,7 @@ struct ProfileView: View {
     @State private var showLoginSheet = false
     @State private var showLogoutAlert = false
     @State private var showSupportSheet = false
+    @State private var showFeedbackSheet = false
     @AppStorage("notifications_enabled") private var notificationsEnabled = true
     @AppStorage("dark_mode_enabled") private var darkModeEnabled = false
     
@@ -47,7 +48,9 @@ struct ProfileView: View {
                                 darkModeEnabled: $darkModeEnabled
                             )
 
-                            ProfileOtherCard()
+                            ProfileOtherCard(onFeedbackTap: {
+                                showFeedbackSheet = true
+                            })
 
                             LogoutButton {
                                 showLogoutAlert = true
@@ -65,7 +68,9 @@ struct ProfileView: View {
                                 darkModeEnabled: $darkModeEnabled
                             )
 
-                            ProfileOtherCard()
+                            ProfileOtherCard(onFeedbackTap: {
+                                showFeedbackSheet = true
+                            })
                         }
 
                         Text("计划打卡 v1.0.0")
@@ -84,6 +89,9 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showSupportSheet) {
                 SupportDeveloperSheet()
+            }
+            .sheet(isPresented: $showFeedbackSheet) {
+                FeedbackSheet()
             }
             .alert("退出登录", isPresented: $showLogoutAlert) {
                 Button("取消", role: .cancel) {}
@@ -469,6 +477,8 @@ struct ProfileSettingsCard: View {
 }
 
 struct ProfileOtherCard: View {
+    var onFeedbackTap: () -> Void = {}
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("其他")
@@ -476,10 +486,13 @@ struct ProfileOtherCard: View {
                 .foregroundColor(AppTheme.textSecondary)
 
             VStack(spacing: 0) {
-                ProfileChevronRow(
-                    icon: "questionmark.circle",
-                    title: "帮助与反馈"
-                )
+                Button(action: onFeedbackTap) {
+                    ProfileChevronRow(
+                        icon: "questionmark.circle",
+                        title: "帮助与反馈"
+                    )
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(16)
@@ -563,6 +576,220 @@ struct LogoutButton: View {
             .cornerRadius(18)
             .shadow(color: AppTheme.shadow, radius: 8, x: 0, y: 4)
         }
+    }
+}
+
+// MARK: - 帮助与反馈
+struct FeedbackSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var feedbackType: FeedbackType = .suggestion
+    @State private var content: String = ""
+    @State private var contactInfo: String = ""
+    @State private var showSentAlert = false
+    @State private var showErrorAlert = false
+    @State private var isSending = false
+    
+    private let recipientEmail = "prometheanfire_app@163.com"
+    
+    enum FeedbackType: String, CaseIterable {
+        case suggestion = "功能建议"
+        case bug = "问题反馈"
+        case help = "使用帮助"
+        
+        var icon: String {
+            switch self {
+            case .suggestion: return "lightbulb"
+            case .bug: return "ladybug"
+            case .help: return "questionmark.circle"
+            }
+        }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AppTheme.background
+                    .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // 反馈类型选择
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("反馈类型")
+                                .font(.subheadline)
+                                .foregroundColor(AppTheme.textSecondary)
+                            
+                            HStack(spacing: 10) {
+                                ForEach(FeedbackType.allCases, id: \.rawValue) { type in
+                                    FeedbackTypeChip(
+                                        type: type,
+                                        isSelected: feedbackType == type,
+                                        onTap: { feedbackType = type }
+                                    )
+                                }
+                            }
+                        }
+                        
+                        // 反馈内容
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("详细描述")
+                                .font(.subheadline)
+                                .foregroundColor(AppTheme.textSecondary)
+                            
+                            TextEditor(text: $content)
+                                .frame(minHeight: 160)
+                                .padding(12)
+                                .scrollContentBackground(.hidden)
+                                .background(AppTheme.cardSecondary)
+                                .cornerRadius(14)
+                                .overlay(
+                                    Group {
+                                        if content.isEmpty {
+                                            Text("请描述您的建议或遇到的问题...")
+                                                .foregroundColor(AppTheme.textSecondary.opacity(0.5))
+                                                .padding(.horizontal, 16)
+                                                .padding(.vertical, 20)
+                                                .allowsHitTesting(false)
+                                        }
+                                    },
+                                    alignment: .topLeading
+                                )
+                        }
+                        
+                        // 联系方式
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("联系方式（选填）")
+                                .font(.subheadline)
+                                .foregroundColor(AppTheme.textSecondary)
+                            
+                            TextField("邮箱或其他联系方式，方便我们回复您", text: $contactInfo)
+                                .padding(14)
+                                .background(AppTheme.cardSecondary)
+                                .cornerRadius(14)
+                        }
+                        
+                        // 发送按钮
+                        Button(action: sendFeedback) {
+                            HStack(spacing: 8) {
+                                if isSending {
+                                    ProgressView()
+                                        .tint(.white)
+                                } else {
+                                    Image(systemName: "paperplane.fill")
+                                }
+                                Text("发送反馈")
+                                    .fontWeight(.semibold)
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(
+                                content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending
+                                ? Color.gray.opacity(0.5)
+                                : AppTheme.accentOrange
+                            )
+                            .cornerRadius(16)
+                        }
+                        .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
+                        
+                        // 提示
+                        Text("您的反馈将通过邮件发送给开发者，我们会认真阅读每一条建议")
+                            .font(.caption)
+                            .foregroundColor(AppTheme.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 4)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 40)
+                }
+            }
+            .navigationTitle("帮助与反馈")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                        .foregroundColor(AppTheme.textSecondary)
+                }
+            }
+            .alert("发送成功", isPresented: $showSentAlert) {
+                Button("好的") { dismiss() }
+            } message: {
+                Text("感谢您的反馈！我们会认真阅读并改进 喵~")
+            }
+            .alert("发送失败", isPresented: $showErrorAlert) {
+                Button("好的") {}
+            } message: {
+                Text("无法打开邮件客户端，请确保您的设备已配置邮箱，或直接发送邮件至 \(recipientEmail)")
+            }
+        }
+    }
+    
+    private func sendFeedback() {
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedContent.isEmpty else { return }
+        
+        isSending = true
+        
+        let subject = "【喵记反馈】\(feedbackType.rawValue)"
+        var body = """
+        反馈类型：\(feedbackType.rawValue)
+        
+        反馈内容：
+        \(trimmedContent)
+        """
+        
+        if !contactInfo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body += "\n\n联系方式：\(contactInfo)"
+        }
+        
+        body += "\n\n---\n设备信息：\(UIDevice.current.model), iOS \(UIDevice.current.systemVersion)\n喵记 v1.0.0"
+        
+        // 尝试打开邮件客户端
+        let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let mailtoURL = "mailto:\(recipientEmail)?subject=\(encodedSubject)&body=\(encodedBody)"
+        
+        if let url = URL(string: mailtoURL) {
+            UIApplication.shared.open(url) { success in
+                DispatchQueue.main.async {
+                    isSending = false
+                    if success {
+                        showSentAlert = true
+                    } else {
+                        showErrorAlert = true
+                    }
+                }
+            }
+        } else {
+            isSending = false
+            showErrorAlert = true
+        }
+    }
+}
+
+private struct FeedbackTypeChip: View {
+    let type: FeedbackSheet.FeedbackType
+    let isSelected: Bool
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 6) {
+                Image(systemName: type.icon)
+                    .font(.caption)
+                Text(type.rawValue)
+                    .font(.subheadline)
+            }
+            .foregroundColor(isSelected ? .white : AppTheme.textPrimary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(isSelected ? AppTheme.accentOrange : AppTheme.cardSecondary)
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
     }
 }
 
