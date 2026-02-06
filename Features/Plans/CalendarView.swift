@@ -385,6 +385,7 @@ struct MonthViewTabItem: View {
                 .foregroundColor(isSelected ? .white : AppTheme.textSecondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
+                .contentShape(Rectangle())
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(isSelected ? AppTheme.accentOrange : Color.clear)

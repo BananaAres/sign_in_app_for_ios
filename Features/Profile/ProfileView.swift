@@ -491,6 +491,8 @@ struct ProfileOtherCard: View {
                         icon: "questionmark.circle",
                         title: "帮助与反馈"
                     )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
