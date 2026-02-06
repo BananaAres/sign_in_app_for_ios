@@ -14,6 +14,7 @@ extension PlanEntry {
     @NSManaged public var endTime: Date
     @NSManaged public var color: String
     @NSManaged public var repeatMode: String
+    @NSManaged public var notificationOption: String?
     @NSManaged public var isCompleted: Bool
     @NSManaged public var createdAt: Date
     @NSManaged public var updatedAt: Date

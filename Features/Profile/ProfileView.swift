@@ -3,12 +3,18 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject var authManager: AuthManager
     @EnvironmentObject var purchaseManager: PurchaseManager
+    @EnvironmentObject var planStore: PlanStore
     @State private var currentUser: User?
     @State private var showLoginSheet = false
     @State private var showLogoutAlert = false
-    @State private var showMembershipSheet = false
+    @State private var showSupportSheet = false
     @AppStorage("notifications_enabled") private var notificationsEnabled = true
     @AppStorage("dark_mode_enabled") private var darkModeEnabled = false
+    
+    // 统计数据
+    @State private var totalCheckInDays: Int = 0
+    @State private var currentStreak: Int = 0
+    @State private var badgeCount: Int = 0
     
     var body: some View {
         NavigationStack {
@@ -23,11 +29,17 @@ struct ProfileView: View {
                         if authManager.isAuthenticated {
                             // 已登录状态
                             if let user = currentUser ?? authManager.currentUser {
-                                ProfileInfoCard(user: user, isPro: purchaseManager.isPro)
+                                ProfileInfoCard(
+                                    user: user,
+                                    isPro: purchaseManager.isPro,
+                                    totalCheckInDays: totalCheckInDays,
+                                    currentStreak: currentStreak,
+                                    badgeCount: badgeCount
+                                )
                             }
 
-                            ProfileServiceCard(onTap: {
-                                showMembershipSheet = true
+                            ProfileSupportCard(onTap: {
+                                showSupportSheet = true
                             })
 
                             ProfileSettingsCard(
@@ -46,7 +58,7 @@ struct ProfileView: View {
                                 showLoginSheet = true
                             }
                             
-                            ProfileServiceCard(onTap: { showLoginSheet = true })
+                            ProfileSupportCard(onTap: { showSupportSheet = true })
 
                             ProfileSettingsCard(
                                 notificationsEnabled: $notificationsEnabled,
@@ -70,9 +82,8 @@ struct ProfileView: View {
             .sheet(isPresented: $showLoginSheet) {
                 SignInView()
             }
-            .sheet(isPresented: $showMembershipSheet) {
-                MembershipView()
-                    .environmentObject(purchaseManager)
+            .sheet(isPresented: $showSupportSheet) {
+                SupportDeveloperSheet()
             }
             .alert("退出登录", isPresented: $showLogoutAlert) {
                 Button("取消", role: .cancel) {}
@@ -89,6 +100,7 @@ struct ProfileView: View {
                 if authManager.isAuthenticated {
                     currentUser = authManager.currentUser
                 }
+                await loadStats()
             }
             .onChange(of: authManager.isAuthenticated) { isAuthenticated in
                 if isAuthenticated {
@@ -97,6 +109,53 @@ struct ProfileView: View {
                     currentUser = nil
                 }
             }
+            .onChange(of: notificationsEnabled) { enabled in
+                if !enabled {
+                    NotificationManager.shared.cancelAll()
+                }
+            }
+        }
+    }
+    
+    // MARK: - 加载真实统计数据
+    private func loadStats() async {
+        let calendar = Calendar.current
+        
+        // 获取所有计划（从很早的时间到现在）
+        let distantPast = calendar.date(byAdding: .year, value: -10, to: Date()) ?? Date.distantPast
+        let plans = (try? await planStore.fetchPlans(from: distantPast, to: Date())) ?? []
+        
+        // 按天分组
+        let dayBuckets = Dictionary(grouping: plans) { calendar.startOfDay(for: $0.startTime) }
+        
+        // 计算累计打卡天数（有完成计划的天数）
+        let checkInDays = dayBuckets.filter { _, items in
+            items.contains(where: { $0.isCompleted })
+        }.count
+        
+        // 计算当前连续打卡天数
+        var streak = 0
+        var currentDay = calendar.startOfDay(for: Date())
+        while true {
+            let items = dayBuckets[currentDay] ?? []
+            if items.contains(where: { $0.isCompleted }) {
+                streak += 1
+                guard let previousDay = calendar.date(byAdding: .day, value: -1, to: currentDay) else { break }
+                currentDay = previousDay
+            } else {
+                break
+            }
+        }
+        
+        // 计算徽章数量（基于连续打卡天数）
+        let milestones = [1, 7, 30, 100]
+        let badges = milestones.filter { streak >= $0 }.count
+        
+        // 更新 UI
+        await MainActor.run {
+            totalCheckInDays = checkInDays
+            currentStreak = streak
+            badgeCount = badges
         }
     }
 }
@@ -185,6 +244,9 @@ struct ProfileHeader: View {
 struct ProfileInfoCard: View {
     let user: User
     let isPro: Bool
+    let totalCheckInDays: Int
+    let currentStreak: Int
+    let badgeCount: Int
 
     var body: some View {
         VStack(spacing: 16) {
@@ -240,11 +302,11 @@ struct ProfileInfoCard: View {
             Divider()
 
             HStack {
-                ProfileStatItem(value: "127", title: "累计打卡")
+                ProfileStatItem(value: "\(totalCheckInDays)", title: "累计打卡")
                 Spacer()
-                ProfileStatItem(value: "24", title: "当前连续")
+                ProfileStatItem(value: "\(currentStreak)", title: "当前连续")
                 Spacer()
-                ProfileStatItem(value: "6", title: "徽章数量")
+                ProfileStatItem(value: "\(badgeCount)", title: "徽章数量")
             }
         }
         .padding(16)
@@ -278,13 +340,13 @@ struct ProfileStatItem: View {
     }
 }
 
-struct ProfileServiceCard: View {
+struct ProfileSupportCard: View {
     var onTap: () -> Void = {}
     
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 12) {
-                Text("会员服务")
+                Text("支持我们")
                     .font(.footnote)
                     .foregroundColor(AppTheme.textSecondary)
 
@@ -293,26 +355,16 @@ struct ProfileServiceCard: View {
                         .fill(AppTheme.cardSecondary)
                         .frame(width: 42, height: 42)
                         .overlay(
-                            Image(systemName: "crown.fill")
-                                .foregroundColor(AppTheme.accentOrange)
+                            Image(systemName: "heart.fill")
+                                .foregroundColor(Color.pink)
                         )
 
                     VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
-                            Text("升级会员")
-                                .font(.headline)
-                                .foregroundColor(AppTheme.textPrimary)
+                        Text("支持开发者")
+                            .font(.headline)
+                            .foregroundColor(AppTheme.textPrimary)
 
-                            Text("PRO")
-                                .font(.caption)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(AppTheme.accentOrange)
-                                .cornerRadius(8)
-                        }
-
-                        Text("解锁更多功能")
+                        Text("观看广告支持我们持续更新")
                             .font(.footnote)
                             .foregroundColor(AppTheme.textSecondary)
                     }
@@ -329,6 +381,55 @@ struct ProfileServiceCard: View {
             .shadow(color: AppTheme.shadow, radius: 8, x: 0, y: 4)
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - 支持开发者弹窗（后续接入激励广告）
+struct SupportDeveloperSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            
+            Image(systemName: "heart.circle.fill")
+                .font(.system(size: 80))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color.pink, Color.red],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            
+            VStack(spacing: 12) {
+                Text("感谢您的支持！")
+                    .font(.title2.bold())
+                    .foregroundColor(AppTheme.textPrimary)
+                
+                Text("激励广告功能即将上线\n敬请期待")
+                    .font(.body)
+                    .foregroundColor(AppTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            Spacer()
+            
+            Button(action: { dismiss() }) {
+                Text("知道了")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(AppTheme.accentOrange)
+                    .cornerRadius(14)
+            }
+            .padding(.horizontal, 40)
+            .padding(.bottom, 40)
+        }
+        .background(AppTheme.background)
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
     }
 }
 
@@ -358,13 +459,6 @@ struct ProfileSettingsCard: View {
                     isOn: $darkModeEnabled,
                     accent: AppTheme.textSecondary
                 )
-
-                Divider()
-
-                ProfileChevronRow(
-                    icon: "shield",
-                    title: "隐私设置"
-                )
             }
         }
         .padding(16)
@@ -385,13 +479,6 @@ struct ProfileOtherCard: View {
                 ProfileChevronRow(
                     icon: "questionmark.circle",
                     title: "帮助与反馈"
-                )
-
-                Divider()
-
-                ProfileChevronRow(
-                    icon: "info.circle",
-                    title: "关于我们"
                 )
             }
         }
@@ -483,4 +570,5 @@ struct LogoutButton: View {
     ProfileView()
         .environmentObject(AuthManager.shared)
         .environmentObject(PurchaseManager())
+        .environmentObject(PlanStore())
 }

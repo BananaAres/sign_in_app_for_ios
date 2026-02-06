@@ -11,6 +11,7 @@ struct Plan: Identifiable, Codable {
     var endTime: Date   // 结束时间（包含日期和时间）
     var color: PlanColor // 计划颜色（用于可视化）
     var repeatMode: RepeatMode // 重复模式
+    var notificationOptions: [PlanNotificationOption] // 通知选项（可多选）
     var isCompleted: Bool // 是否完成
     var createdAt: Date
     var updatedAt: Date
@@ -109,6 +110,35 @@ enum RepeatMode: String, Codable {
         case .monthly: return "每月重复"
         case .weeklyInCurrent: return "当周重复"
         case .monthlyInCurrent: return "当月重复"
+        }
+    }
+}
+
+// MARK: - 通知选项
+enum PlanNotificationOption: String, Codable, CaseIterable {
+    case start5 = "start_5"
+    case start10 = "start_10"
+    case endTime = "end_time"
+
+    var displayName: String {
+        switch self {
+        case .start5:
+            return "在开始前5分钟通知我"
+        case .start10:
+            return "在开始前10分钟通知我"
+        case .endTime:
+            return "在计划结束时间通知我"
+        }
+    }
+
+    var sortOrder: Int {
+        switch self {
+        case .start10:
+            return 0
+        case .start5:
+            return 1
+        case .endTime:
+            return 2
         }
     }
 }

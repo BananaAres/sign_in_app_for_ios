@@ -39,6 +39,7 @@ final class PlanStore: ObservableObject {
             entry.apply(plan: plan)
             try self.context.save()
         }
+        await scheduleNotificationIfNeeded(for: plan)
     }
     
     func updatePlan(_ plan: Plan) async throws {
@@ -49,6 +50,7 @@ final class PlanStore: ObservableObject {
             entry.apply(plan: plan)
             try self.context.save()
         }
+        await updateNotification(for: plan)
     }
     
     func deletePlan(id: String) async throws {
@@ -59,6 +61,7 @@ final class PlanStore: ObservableObject {
             entries.forEach { self.context.delete($0) }
             try self.context.save()
         }
+        NotificationManager.shared.cancelNotifications(for: id)
     }
 
     func deletePlansInRepeatGroup(groupId: String, from date: Date, excluding keepId: String? = nil) async throws {
@@ -70,10 +73,38 @@ final class PlanStore: ObservableObject {
                 guard let keepId = keepId else { return true }
                 return entry.id != keepId
             }
+            let ids = filtered.map { $0.id }
             filtered.forEach { self.context.delete($0) }
             try self.context.save()
+            ids.forEach { NotificationManager.shared.cancelNotifications(for: $0) }
         }
     }
+}
+
+private extension PlanStore {
+    var notificationsEnabled: Bool {
+        UserDefaults.standard.object(forKey: "notifications_enabled") as? Bool ?? true
+    }
+
+    func scheduleNotificationIfNeeded(for plan: Plan) async {
+        guard notificationsEnabled else { return }
+        await NotificationManager.shared.scheduleNotifications(for: plan)
+    }
+
+    func updateNotification(for plan: Plan) async {
+        NotificationManager.shared.cancelNotifications(for: plan.id)
+        guard !plan.isCompleted else { return }
+        await scheduleNotificationIfNeeded(for: plan)
+    }
+}
+
+private func parseNotificationOptions(_ raw: String?) -> [PlanNotificationOption] {
+    guard let raw else { return [.endTime] }
+    if raw.isEmpty { return [] }
+    let options = raw
+        .split(separator: ",")
+        .compactMap { PlanNotificationOption(rawValue: String($0)) }
+    return options.isEmpty ? [.endTime] : Array(Set(options)).sorted { $0.sortOrder < $1.sortOrder }
 }
 
 private extension PlanEntry {
@@ -86,6 +117,9 @@ private extension PlanEntry {
         endTime = plan.endTime
         color = plan.color.rawValue
         repeatMode = plan.repeatMode.rawValue
+        notificationOption = plan.notificationOptions.isEmpty
+        ? ""
+        : plan.notificationOptions.map { $0.rawValue }.joined(separator: ",")
         isCompleted = plan.isCompleted
         createdAt = plan.createdAt
         updatedAt = plan.updatedAt
@@ -96,6 +130,7 @@ private extension PlanEntry {
               let repeatMode = RepeatMode(rawValue: repeatMode) else {
             return nil
         }
+        let notificationOptions = parseNotificationOptions(notificationOption)
         return Plan(
             id: id,
             repeatGroupId: repeatGroupId,
@@ -105,6 +140,7 @@ private extension PlanEntry {
             endTime: endTime,
             color: planColor,
             repeatMode: repeatMode,
+            notificationOptions: notificationOptions,
             isCompleted: isCompleted,
             createdAt: createdAt,
             updatedAt: updatedAt

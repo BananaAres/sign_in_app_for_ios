@@ -5,8 +5,9 @@ struct TodayView: View {
     @State private var plans: [Plan] = []
     @State private var isLoading = false
     @State private var showCreatePlanSheet = false
-    @State private var createStartMinute = 0
-    @State private var createEndMinute = 30
+    @State private var editingPlan: Plan?
+    @State private var pendingDeletePlan: Plan?
+    @State private var showDeleteDialog = false
 
     private let calendar = Calendar.current
     private let columns = [
@@ -36,7 +37,9 @@ struct TodayView: View {
                                     TodayPlanCard(
                                         plan: plan,
                                         timeText: timeRange(for: plan),
-                                        onToggleComplete: { toggleCompletion(plan) }
+                                        onToggleComplete: { toggleCompletion(plan) },
+                                        onEdit: { editingPlan = plan },
+                                        onDelete: { requestDelete(plan) }
                                     )
                                 }
                             }
@@ -55,7 +58,6 @@ struct TodayView: View {
                 VStack {
                     Spacer()
                     TodayAddButton {
-                        prepareCreateDefaults()
                         showCreatePlanSheet = true
                     }
                 }
@@ -63,17 +65,48 @@ struct TodayView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showCreatePlanSheet) {
-                PlanEditorView(
-                    date: Date(),
-                    startMinute: createStartMinute,
-                    endMinute: createEndMinute,
-                    allowRepeat: false,
-                    allowColor: false,
-                    mode: .create(existingPlans: plans, onCreate: { newPlans in
+                TodayCreatePlanSheet(
+                    existingPlans: plans,
+                    onCreate: { newPlans in
                         plans.append(contentsOf: newPlans)
                         plans.sort { $0.startTime < $1.startTime }
+                    }
+                )
+            }
+            .sheet(item: $editingPlan) { plan in
+                PlanEditorView(
+                    date: plan.startTime,
+                    allowRepeat: true,
+                    allowColor: false,
+                    mode: .edit(plan: plan, existingPlans: plans, onUpdate: { updated in
+                        if let index = plans.firstIndex(where: { $0.id == updated.id }) {
+                            plans[index] = updated
+                            plans.sort { $0.startTime < $1.startTime }
+                        }
                     })
                 )
+            }
+            .confirmationDialog(
+                "删除计划",
+                isPresented: $showDeleteDialog,
+                titleVisibility: .visible,
+                presenting: pendingDeletePlan
+            ) { plan in
+                Button("仅删除此计划", role: .destructive) {
+                    deleteSinglePlan(plan)
+                    pendingDeletePlan = nil
+                }
+                if plan.repeatGroupId != nil {
+                    Button("删除全部重复计划", role: .destructive) {
+                        deleteRepeatGroup(for: plan)
+                        pendingDeletePlan = nil
+                    }
+                }
+                Button("取消", role: .cancel) {
+                    pendingDeletePlan = nil
+                }
+            } message: { _ in
+                Text("这是一个重复计划，要删除哪部分？")
             }
             .task {
                 await loadPlans()
@@ -102,16 +135,6 @@ struct TodayView: View {
         isLoading = false
     }
 
-    private func prepareCreateDefaults() {
-        let now = Date()
-        let hour = calendar.component(.hour, from: now)
-        let minute = calendar.component(.minute, from: now)
-        let rounded = (minute / 30 + 1) * 30
-        let startMinute = min(hour * 60 + rounded, 23 * 60 + 30)
-        createStartMinute = startMinute
-        createEndMinute = min(startMinute + 30, 24 * 60)
-    }
-
     private func toggleCompletion(_ plan: Plan) {
         guard let index = plans.firstIndex(where: { $0.id == plan.id }) else { return }
         var updated = plans[index]
@@ -122,6 +145,34 @@ struct TodayView: View {
         }
         Task {
             try? await planStore.updatePlan(updated)
+        }
+    }
+
+    private func requestDelete(_ plan: Plan) {
+        if plan.repeatGroupId != nil {
+            pendingDeletePlan = plan
+            showDeleteDialog = true
+        } else {
+            deleteSinglePlan(plan)
+        }
+    }
+
+    private func deleteSinglePlan(_ plan: Plan) {
+        plans.removeAll { $0.id == plan.id }
+        Task {
+            try? await planStore.deletePlan(id: plan.id)
+        }
+    }
+
+    private func deleteRepeatGroup(for plan: Plan) {
+        guard let groupId = plan.repeatGroupId else { return }
+        plans.removeAll { $0.repeatGroupId == groupId }
+        Task {
+            try? await planStore.deletePlansInRepeatGroup(
+                groupId: groupId,
+                from: Date.distantPast,
+                excluding: nil
+            )
         }
     }
 
@@ -260,89 +311,110 @@ private struct TodayPlanCard: View {
     let plan: Plan
     let timeText: String
     let onToggleComplete: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    private var accentColor: Color {
+        plan.isCompleted ? AppTheme.accentGreen : Color(red: 0.6, green: 0.5, blue: 0.9)
+    }
 
     var body: some View {
         Button(action: onToggleComplete) {
-            ZStack(alignment: .topLeading) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .top, spacing: 12) {
-                        Text(timeText)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(AppTheme.textPrimary)
-                            .frame(maxWidth: .infinity, alignment: .center)
+            HStack(spacing: 0) {
+                // 左侧彩色竖条
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(accentColor)
+                    .frame(width: 5)
+                    .padding(.vertical, 12)
+                    .padding(.leading, 6)
 
-                        Image(systemName: plan.isCompleted ? "checkmark.seal.fill" : "circle")
-                            .font(.title2)
-                            .foregroundColor(plan.isCompleted ? AppTheme.accentGreen : AppTheme.textSecondary)
-                            .scaleEffect(plan.isCompleted ? 1.1 : 1)
-                            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: plan.isCompleted)
-                    }
+                // 完成勾选圆圈
+                Image(systemName: plan.isCompleted ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 26, weight: .medium))
+                    .foregroundColor(plan.isCompleted ? AppTheme.accentGreen : AppTheme.textSecondary.opacity(0.4))
+                    .padding(.leading, 14)
+                    .scaleEffect(plan.isCompleted ? 1.05 : 1)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: plan.isCompleted)
 
-                    Divider()
-                        .background(AppTheme.textSecondary.opacity(0.2))
-
+                // 计划内容
+                VStack(alignment: .leading, spacing: 4) {
                     Text(plan.title)
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(plan.isCompleted ? AppTheme.textSecondary : AppTheme.textPrimary)
                         .strikethrough(plan.isCompleted, color: AppTheme.textSecondary.opacity(0.6))
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        .lineLimit(1)
 
-                    if let note = plan.note, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text(note)
-                            .font(.callout)
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 12))
                             .foregroundColor(AppTheme.textSecondary)
-                            .lineLimit(2)
-                            .frame(maxWidth: .infinity, alignment: .center)
+                        Text(timeText)
+                            .font(.system(size: 14))
+                            .foregroundColor(AppTheme.textSecondary)
                     }
                 }
-                .padding(18)
-                .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    AppTheme.cardSecondary,
-                                    AppTheme.card
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(AppTheme.textSecondary.opacity(0.08), lineWidth: 1)
-                        )
-                )
-                .shadow(color: AppTheme.shadow, radius: 10, x: 0, y: 6)
-                .overlay(
-                    PinView(isCompleted: plan.isCompleted)
-                        .offset(x: 14, y: -10),
-                    alignment: .topLeading
-                )
+                .padding(.leading, 12)
+
+                Spacer()
+
+                // 右侧小圆点
+                Circle()
+                    .fill(accentColor.opacity(0.6))
+                    .frame(width: 8, height: 8)
+                    .padding(.trailing, 16)
             }
+            .frame(maxWidth: .infinity, minHeight: 72)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AppTheme.card)
+                    .shadow(color: AppTheme.shadow, radius: 8, x: 0, y: 4)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(accentColor.opacity(0.15), lineWidth: 1)
+            )
             .scaleEffect(plan.isCompleted ? 0.98 : 1)
             .animation(.spring(response: 0.28, dampingFraction: 0.75), value: plan.isCompleted)
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button(action: onEdit) {
+                Label("编辑", systemImage: "pencil")
+            }
+            Button(role: .destructive, action: onDelete) {
+                Label("删除", systemImage: "trash")
+            }
+        }
     }
 }
 
-private struct PinView: View {
-    let isCompleted: Bool
-
+// MARK: - 今日创建计划 Sheet（延迟计算默认值，避免卡顿）
+private struct TodayCreatePlanSheet: View {
+    let existingPlans: [Plan]
+    let onCreate: ([Plan]) -> Void
+    
+    private var defaultStartMinute: Int {
+        let calendar = Calendar.current
+        let now = Date()
+        let hour = calendar.component(.hour, from: now)
+        let minute = calendar.component(.minute, from: now)
+        let rounded = (minute / 30 + 1) * 30
+        return min(hour * 60 + rounded, 23 * 60 + 30)
+    }
+    
+    private var defaultEndMinute: Int {
+        min(defaultStartMinute + 30, 24 * 60)
+    }
+    
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(isCompleted ? AppTheme.accentGreen : AppTheme.accentOrange)
-                .frame(width: 18, height: 18)
-                .shadow(color: AppTheme.shadow, radius: 4, x: 0, y: 2)
-
-            Circle()
-                .fill(Color.white.opacity(0.75))
-                .frame(width: 6, height: 6)
-        }
+        PlanEditorView(
+            date: Date(),
+            startMinute: defaultStartMinute,
+            endMinute: defaultEndMinute,
+            allowRepeat: false,
+            allowColor: false,
+            mode: .create(existingPlans: existingPlans, onCreate: onCreate)
+        )
     }
 }
 

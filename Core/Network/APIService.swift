@@ -111,6 +111,7 @@ enum MockData {
                 endTime: morningRunEnd,
                 color: .green,
                 repeatMode: .weekly,
+                notificationOptions: [.endTime],
                 isCompleted: false,
                 createdAt: today,
                 updatedAt: today
@@ -128,6 +129,7 @@ enum MockData {
                 endTime: oralEnd,
                 color: .red,
                 repeatMode: .weekly,
+                notificationOptions: [.endTime],
                 isCompleted: false,
                 createdAt: today,
                 updatedAt: today
@@ -145,6 +147,7 @@ enum MockData {
                 endTime: reviewEnd,
                 color: .purple,
                 repeatMode: .none,
+                notificationOptions: [.endTime],
                 isCompleted: false,
                 createdAt: today,
                 updatedAt: today
@@ -166,6 +169,7 @@ enum MockData {
                         endTime: runEnd,
                         color: .green,
                         repeatMode: .weekly,
+                        notificationOptions: [.endTime],
                         isCompleted: false,
                         createdAt: date,
                         updatedAt: date

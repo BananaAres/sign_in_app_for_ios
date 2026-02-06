@@ -819,11 +819,12 @@ struct PlanEditorView: View {
     @State private var note = ""
     @State private var selectedColor: PlanColor = .blue
     @State private var repeatMode: RepeatMode = .none
+    @State private var notificationOptions: Set<PlanNotificationOption> = [.endTime]
     @State private var startMinuteValue: Int
     @State private var endMinuteValue: Int
     
     private let dayEndMinute: Int = 24 * 60
-    private let timeStep: Int = 5
+    private let timeStep: Int = 1
     private let calendar = Calendar.current
     private let chinaCalendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
@@ -870,6 +871,7 @@ struct PlanEditorView: View {
             _note = State(initialValue: plan.note ?? "")
             _selectedColor = State(initialValue: plan.color)
             _repeatMode = State(initialValue: plan.repeatMode)
+            _notificationOptions = State(initialValue: Set(plan.notificationOptions))
         }
         if !allowRepeat {
             _repeatMode = State(initialValue: .none)
@@ -1066,6 +1068,20 @@ struct PlanEditorView: View {
                                     .frame(height: 160)
                                 }
                             }
+
+                            TimelineFormCard(title: "通知") {
+                                VStack(spacing: 10) {
+                                    ForEach(PlanNotificationOption.allCases.sorted { $0.sortOrder < $1.sortOrder }, id: \.self) { option in
+                                        NotificationOptionRow(
+                                            title: option.displayName,
+                                            isSelected: notificationOptions.contains(option)
+                                        ) {
+                                            toggle(option)
+                                        }
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
                         }
                         .padding(.horizontal, 20)
                         .padding(.bottom, 24)
@@ -1114,6 +1130,7 @@ struct PlanEditorView: View {
         let effectiveRepeatMode = allowRepeat ? repeatMode : .none
         let dates = repeatDates(from: startDay, mode: effectiveRepeatMode)
         let groupId = effectiveRepeatMode == .none ? nil : UUID().uuidString
+        let options = notificationOptions.sorted { $0.sortOrder < $1.sortOrder }
         return dates.map { occurrence in
             let start = timeDate(from: startMinuteValue, on: occurrence)
             let end = calendar.date(byAdding: .minute, value: durationMinutes, to: start) ?? start
@@ -1126,6 +1143,7 @@ struct PlanEditorView: View {
                 endTime: end,
                 color: selectedColor,
                 repeatMode: effectiveRepeatMode,
+                notificationOptions: options,
                 isCompleted: false,
                 createdAt: Date(),
                 updatedAt: Date()
@@ -1141,6 +1159,7 @@ struct PlanEditorView: View {
         updated.endTime = endTime
         updated.color = selectedColor
         updated.repeatMode = repeatMode
+        updated.notificationOptions = notificationOptions.sorted { $0.sortOrder < $1.sortOrder }
         updated.updatedAt = Date()
 
         let todayStart = calendar.startOfDay(for: Date())
@@ -1193,6 +1212,7 @@ struct PlanEditorView: View {
                 endTime: end,
                 color: selectedColor,
                 repeatMode: repeatMode,
+                notificationOptions: notificationOptions.sorted { $0.sortOrder < $1.sortOrder },
                 isCompleted: false,
                 createdAt: Date(),
                 updatedAt: Date()
@@ -1294,6 +1314,14 @@ struct PlanEditorView: View {
         let minute = minutes % 60
         return String(format: "%02d:%02d", hour, minute)
     }
+
+    private func toggle(_ option: PlanNotificationOption) {
+        if notificationOptions.contains(option) {
+            notificationOptions.remove(option)
+        } else {
+            notificationOptions.insert(option)
+        }
+    }
 }
 
 struct TimelineFormCard<Content: View>: View {
@@ -1334,6 +1362,29 @@ struct TimelineInfoRow: View {
     }
 }
 
+struct NotificationOptionRow: View {
+    let title: String
+    let isSelected: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isSelected ? AppTheme.accentGreen : AppTheme.textSecondary)
+                Text(title)
+                    .foregroundColor(AppTheme.textPrimary)
+                Spacer()
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(AppTheme.cardSecondary)
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct TimelineTimePickerRow: View {
     let label: String
     @Binding var selection: Int
@@ -1341,24 +1392,149 @@ struct TimelineTimePickerRow: View {
     let isInvalid: Bool
     let formatter: (Int) -> String
     
+    @State private var showPicker = false
+    @State private var tempHour: Int = 0
+    @State private var tempMinute: Int = 0
+    
+    // 分解为小时和分钟
+    private var hour: Int {
+        min(selection / 60, 24)
+    }
+    
+    private var minute: Int {
+        selection % 60
+    }
+    
+    // 是否是结束时间（允许24:00）
+    private var allowsMidnight: Bool {
+        options.contains(24 * 60)
+    }
+    
+    private var displayText: String {
+        String(format: "%02d:%02d", hour, minute)
+    }
+    
     var body: some View {
-        HStack {
-            Text(label)
-                .foregroundColor(isInvalid ? .red.opacity(0.8) : AppTheme.textSecondary)
-            Spacer()
-            Picker("", selection: $selection) {
-                ForEach(options, id: \.self) { minute in
-                    Text(formatter(minute)).tag(minute)
+        Button(action: {
+            tempHour = hour
+            tempMinute = minute
+            showPicker = true
+        }) {
+            HStack {
+                Text(label)
+                    .foregroundColor(isInvalid ? .red.opacity(0.8) : AppTheme.textSecondary)
+                
+                Spacer()
+                
+                Text(displayText)
+                    .font(.system(size: 17, weight: .medium, design: .monospaced))
+                    .foregroundColor(isInvalid ? .red.opacity(0.85) : AppTheme.textPrimary)
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 12)
+            .background(isInvalid ? Color.red.opacity(0.12) : AppTheme.cardSecondary)
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showPicker) {
+            TimePickerSheet(
+                label: label,
+                hour: $tempHour,
+                minute: $tempMinute,
+                allowsMidnight: allowsMidnight,
+                onConfirm: {
+                    let clampedHour = min(tempHour, allowsMidnight ? 24 : 23)
+                    let finalMinute = clampedHour == 24 ? 0 : tempMinute
+                    selection = clampedHour * 60 + finalMinute
+                    showPicker = false
+                },
+                onCancel: {
+                    showPicker = false
+                }
+            )
+            .presentationDetents([.height(320)])
+            .presentationDragIndicator(.visible)
+        }
+    }
+}
+
+// MARK: - 时间选择弹窗
+private struct TimePickerSheet: View {
+    let label: String
+    @Binding var hour: Int
+    @Binding var minute: Int
+    let allowsMidnight: Bool
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // 顶部栏
+            HStack {
+                Button("取消", action: onCancel)
+                    .foregroundColor(AppTheme.textSecondary)
+                
+                Spacer()
+                
+                Text(label)
+                    .font(.headline)
+                    .foregroundColor(AppTheme.textPrimary)
+                
+                Spacer()
+                
+                Button("确定", action: onConfirm)
+                    .fontWeight(.semibold)
+                    .foregroundColor(AppTheme.accentOrange)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            
+            Divider()
+            
+            // 滚轮选择器
+            HStack(spacing: 0) {
+                // 小时滚轮
+                Picker("时", selection: $hour) {
+                    ForEach(allowsMidnight ? Array(0...24) : Array(0...23), id: \.self) { h in
+                        Text(String(format: "%02d", h))
+                            .font(.system(size: 22, design: .monospaced))
+                            .tag(h)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(maxWidth: .infinity)
+                
+                Text(":")
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundColor(AppTheme.textPrimary)
+                
+                // 分钟滚轮
+                Picker("分", selection: $minute) {
+                    if hour == 24 {
+                        Text("00")
+                            .font(.system(size: 22, design: .monospaced))
+                            .tag(0)
+                    } else {
+                        ForEach(0...59, id: \.self) { m in
+                            Text(String(format: "%02d", m))
+                                .font(.system(size: 22, design: .monospaced))
+                                .tag(m)
+                        }
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 40)
+            .onChange(of: hour) { newHour in
+                if newHour == 24 {
+                    minute = 0
                 }
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .foregroundColor(isInvalid ? .red.opacity(0.85) : AppTheme.textPrimary)
+            
+            Spacer()
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .background(isInvalid ? Color.red.opacity(0.12) : AppTheme.cardSecondary)
-        .cornerRadius(12)
+        .background(AppTheme.background)
     }
 }
 
