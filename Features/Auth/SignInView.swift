@@ -6,7 +6,8 @@ struct SignInView: View {
     @EnvironmentObject var authManager: AuthManager
     
     @State private var errorMessage: String?
-    
+    @State private var showPrivacySheet = false
+
     var body: some View {
         ZStack {
             // 背景
@@ -109,18 +110,17 @@ struct SignInView: View {
                 VStack(spacing: 8) {
                     Text("登录即表示同意")
                         .foregroundColor(AppTheme.textSecondary)
-                    HStack(spacing: 4) {
-                        Button("《用户协议》") {}
-                            .foregroundColor(AppTheme.accentOrange)
-                        Text("和")
-                            .foregroundColor(AppTheme.textSecondary)
-                        Button("《隐私政策》") {}
-                            .foregroundColor(AppTheme.accentOrange)
+                    Button("《隐私政策与用户协议》") {
+                        showPrivacySheet = true
                     }
+                    .font(.footnote)
+                    .foregroundColor(AppTheme.accentOrange)
                 }
-                .font(.footnote)
                 .padding(.bottom, 32)
             }
+        }
+        .sheet(isPresented: $showPrivacySheet) {
+            PrivacyPolicySheet()
         }
         .animation(.spring(response: 0.3), value: errorMessage)
     }

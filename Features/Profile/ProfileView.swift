@@ -1,4 +1,5 @@
 import SwiftUI
+import SafariServices
 
 struct ProfileView: View {
     @EnvironmentObject var authManager: AuthManager
@@ -8,9 +9,12 @@ struct ProfileView: View {
     @State private var showLoginSheet = false
     @State private var showLogoutAlert = false
     @State private var showSupportSheet = false
-    @State private var showFeedbackSheet = false
+    @State private var showFeedbackWebView = false
+    @State private var showFeedbackConsentAlert = false
+    @State private var showPrivacySheet = false
     @AppStorage("notifications_enabled") private var notificationsEnabled = true
     @AppStorage("dark_mode_enabled") private var darkModeEnabled = false
+    @AppStorage("feedback_consent_shown") private var feedbackConsentShown = false
     
     // 统计数据
     @State private var totalCheckInDays: Int = 0
@@ -49,7 +53,7 @@ struct ProfileView: View {
                             )
 
                             ProfileOtherCard(onFeedbackTap: {
-                                showFeedbackSheet = true
+                                handleFeedbackTap()
                             })
 
                             LogoutButton {
@@ -69,14 +73,27 @@ struct ProfileView: View {
                             )
 
                             ProfileOtherCard(onFeedbackTap: {
-                                showFeedbackSheet = true
+                                handleFeedbackTap()
                             })
                         }
 
-                        Text("计划打卡 v1.0.0")
-                            .font(.footnote)
-                            .foregroundColor(AppTheme.textSecondary)
-                            .padding(.bottom, 12)
+                        HStack(spacing: 6) {
+                            Text("喵记 v1.0.0")
+                                .font(.footnote)
+                                .foregroundColor(AppTheme.textSecondary)
+                            Text("|")
+                                .font(.footnote)
+                                .foregroundColor(AppTheme.textSecondary)
+                            Button(action: { showPrivacySheet = true }) {
+                                Text("隐私政策与用户协议")
+                                    .font(.footnote)
+                                    .foregroundColor(Color.blue)
+                                    .underline()
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.top, 4)
+                        .padding(.bottom, 12)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
@@ -90,8 +107,13 @@ struct ProfileView: View {
             .sheet(isPresented: $showSupportSheet) {
                 SupportDeveloperSheet()
             }
-            .sheet(isPresented: $showFeedbackSheet) {
-                FeedbackSheet()
+            .sheet(isPresented: $showFeedbackWebView) {
+                if let url = URL(string: "https://wj.qq.com/s2/25725422/1a11/") {
+                    SafariView(url: url)
+                }
+            }
+            .sheet(isPresented: $showPrivacySheet) {
+                PrivacyPolicySheet()
             }
             .alert("退出登录", isPresented: $showLogoutAlert) {
                 Button("取消", role: .cancel) {}
@@ -103,6 +125,18 @@ struct ProfileView: View {
                 }
             } message: {
                 Text("确定要退出当前账号吗？")
+            }
+            .sheet(isPresented: $showFeedbackConsentAlert) {
+                FeedbackConsentSheet(
+                    onConfirm: {
+                        feedbackConsentShown = true
+                        showFeedbackConsentAlert = false
+                        showFeedbackWebView = true
+                    },
+                    onCancel: {
+                        showFeedbackConsentAlert = false
+                    }
+                )
             }
             .task {
                 if authManager.isAuthenticated {
@@ -122,6 +156,15 @@ struct ProfileView: View {
                     NotificationManager.shared.cancelAll()
                 }
             }
+        }
+    }
+    
+    // MARK: - Actions
+    private func handleFeedbackTap() {
+        if feedbackConsentShown {
+            showFeedbackWebView = true
+        } else {
+            showFeedbackConsentAlert = true
         }
     }
     
@@ -581,218 +624,116 @@ struct LogoutButton: View {
     }
 }
 
-// MARK: - 帮助与反馈
-struct FeedbackSheet: View {
+// MARK: - 隐私政策与用户协议（内置 WebView）
+struct PrivacyPolicySheet: View {
     @Environment(\.dismiss) private var dismiss
-    
-    @State private var feedbackType: FeedbackType = .suggestion
-    @State private var content: String = ""
-    @State private var contactInfo: String = ""
-    @State private var showSentAlert = false
-    @State private var showErrorAlert = false
-    @State private var isSending = false
-    
-    private let recipientEmail = "prometheanfire_app@163.com"
-    
-    enum FeedbackType: String, CaseIterable {
-        case suggestion = "功能建议"
-        case bug = "问题反馈"
-        case help = "使用帮助"
-        
-        var icon: String {
-            switch self {
-            case .suggestion: return "lightbulb"
-            case .bug: return "ladybug"
-            case .help: return "questionmark.circle"
-            }
-        }
-    }
-    
+
+    private static let privacyURL = URL(string: "https://bananaares.github.io/cola-sign-in-app-privacy-policy/")!
+
     var body: some View {
         NavigationStack {
-            ZStack {
-                AppTheme.background
-                    .ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // 反馈类型选择
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("反馈类型")
-                                .font(.subheadline)
-                                .foregroundColor(AppTheme.textSecondary)
-                            
-                            HStack(spacing: 10) {
-                                ForEach(FeedbackType.allCases, id: \.rawValue) { type in
-                                    FeedbackTypeChip(
-                                        type: type,
-                                        isSelected: feedbackType == type,
-                                        onTap: { feedbackType = type }
-                                    )
-                                }
-                            }
-                        }
-                        
-                        // 反馈内容
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("详细描述")
-                                .font(.subheadline)
-                                .foregroundColor(AppTheme.textSecondary)
-                            
-                            TextEditor(text: $content)
-                                .frame(minHeight: 160)
-                                .padding(12)
-                                .scrollContentBackground(.hidden)
-                                .background(AppTheme.cardSecondary)
-                                .cornerRadius(14)
-                                .overlay(
-                                    Group {
-                                        if content.isEmpty {
-                                            Text("请描述您的建议或遇到的问题...")
-                                                .foregroundColor(AppTheme.textSecondary.opacity(0.5))
-                                                .padding(.horizontal, 16)
-                                                .padding(.vertical, 20)
-                                                .allowsHitTesting(false)
-                                        }
-                                    },
-                                    alignment: .topLeading
-                                )
-                        }
-                        
-                        // 联系方式
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("联系方式（选填）")
-                                .font(.subheadline)
-                                .foregroundColor(AppTheme.textSecondary)
-                            
-                            TextField("邮箱或其他联系方式，方便我们回复您", text: $contactInfo)
-                                .padding(14)
-                                .background(AppTheme.cardSecondary)
-                                .cornerRadius(14)
-                        }
-                        
-                        // 发送按钮
-                        Button(action: sendFeedback) {
-                            HStack(spacing: 8) {
-                                if isSending {
-                                    ProgressView()
-                                        .tint(.white)
-                                } else {
-                                    Image(systemName: "paperplane.fill")
-                                }
-                                Text("发送反馈")
-                                    .fontWeight(.semibold)
-                            }
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(
-                                content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending
-                                ? Color.gray.opacity(0.5)
-                                : AppTheme.accentOrange
-                            )
-                            .cornerRadius(16)
-                        }
-                        .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
-                        
-                        // 提示
-                        Text("您的反馈将通过邮件发送给开发者，我们会认真阅读每一条建议")
-                            .font(.caption)
-                            .foregroundColor(AppTheme.textSecondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.top, 4)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .padding(.bottom, 40)
-                }
-            }
-            .navigationTitle("帮助与反馈")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
-                        .foregroundColor(AppTheme.textSecondary)
-                }
-            }
-            .alert("发送成功", isPresented: $showSentAlert) {
-                Button("好的") { dismiss() }
-            } message: {
-                Text("感谢您的反馈！我们会认真阅读并改进 喵~")
-            }
-            .alert("发送失败", isPresented: $showErrorAlert) {
-                Button("好的") {}
-            } message: {
-                Text("无法打开邮件客户端，请确保您的设备已配置邮箱，或直接发送邮件至 \(recipientEmail)")
-            }
-        }
-    }
-    
-    private func sendFeedback() {
-        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedContent.isEmpty else { return }
-        
-        isSending = true
-        
-        let subject = "【喵记反馈】\(feedbackType.rawValue)"
-        var body = """
-        反馈类型：\(feedbackType.rawValue)
-        
-        反馈内容：
-        \(trimmedContent)
-        """
-        
-        if !contactInfo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            body += "\n\n联系方式：\(contactInfo)"
-        }
-        
-        body += "\n\n---\n设备信息：\(UIDevice.current.model), iOS \(UIDevice.current.systemVersion)\n喵记 v1.0.0"
-        
-        // 尝试打开邮件客户端
-        let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let mailtoURL = "mailto:\(recipientEmail)?subject=\(encodedSubject)&body=\(encodedBody)"
-        
-        if let url = URL(string: mailtoURL) {
-            UIApplication.shared.open(url) { success in
-                DispatchQueue.main.async {
-                    isSending = false
-                    if success {
-                        showSentAlert = true
-                    } else {
-                        showErrorAlert = true
+            InAppWebView(url: Self.privacyURL)
+                .navigationTitle("隐私政策与用户协议")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("完成") { dismiss() }
+                            .foregroundColor(AppTheme.accentOrange)
                     }
                 }
-            }
-        } else {
-            isSending = false
-            showErrorAlert = true
         }
     }
 }
 
-private struct FeedbackTypeChip: View {
-    let type: FeedbackSheet.FeedbackType
-    let isSelected: Bool
-    let onTap: () -> Void
-    
+// MARK: - 帮助与反馈说明弹窗
+struct FeedbackConsentSheet: View {
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 6) {
-                Image(systemName: type.icon)
-                    .font(.caption)
-                Text(type.rawValue)
-                    .font(.subheadline)
+        VStack(spacing: 0) {
+            // 标题
+            HStack {
+                Image(systemName: "info.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(AppTheme.accentOrange)
+                Text("使用说明")
+                    .font(.title2.bold())
+                    .foregroundColor(AppTheme.textPrimary)
+                Spacer()
             }
-            .foregroundColor(isSelected ? .white : AppTheme.textPrimary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(isSelected ? AppTheme.accentOrange : AppTheme.cardSecondary)
-            .cornerRadius(12)
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 20)
+
+            // 说明内容
+            VStack(alignment: .leading, spacing: 16) {
+                Text("为方便您提交问题与建议，本页面将通过第三方问卷服务打开。")
+                    .font(.body)
+                    .foregroundColor(AppTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("您提交的反馈内容仅用于产品优化与问题跟进，不会用于其他用途。")
+                    .font(.body)
+                    .foregroundColor(AppTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("联系方式为选填，仅用于必要时与您沟通处理进度。")
+                    .font(.body)
+                    .foregroundColor(AppTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            .background(AppTheme.cardSecondary)
+            .cornerRadius(16)
+            .padding(.horizontal, 24)
+
+            Spacer(minLength: 32)
+
+            // 按钮
+            VStack(spacing: 12) {
+                Button(action: onConfirm) {
+                    Text("我已知晓，进入问卷")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(AppTheme.accentOrange)
+                        .cornerRadius(14)
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onCancel) {
+                    Text("取消")
+                        .font(.body)
+                        .foregroundColor(AppTheme.textSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
-        .buttonStyle(.plain)
+        .background(AppTheme.background)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
+}
+
+// MARK: - Safari 容器（用于问卷）
+struct SafariView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        let config = SFSafariViewController.Configuration()
+        config.entersReaderIfAvailable = false
+        let vc = SFSafariViewController(url: url, configuration: config)
+        vc.preferredControlTintColor = UIColor(AppTheme.accentOrange)
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
 }
 
 #Preview {
