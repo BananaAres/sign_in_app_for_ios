@@ -2,12 +2,8 @@ import SwiftUI
 import SafariServices
 
 struct ProfileView: View {
-    @EnvironmentObject var authManager: AuthManager
     @EnvironmentObject var purchaseManager: PurchaseManager
     @EnvironmentObject var planStore: PlanStore
-    @State private var currentUser: User?
-    @State private var showLoginSheet = false
-    @State private var showLogoutAlert = false
     @State private var showSupportSheet = false
     @State private var showFeedbackWebView = false
     @State private var showFeedbackConsentAlert = false
@@ -29,53 +25,22 @@ struct ProfileView: View {
 
                 ScrollView {
                     VStack(spacing: 18) {
-                        ProfileHeader()
+                        AppSloganBanner()
 
-                        if authManager.isAuthenticated {
-                            // 已登录状态
-                            if let user = currentUser ?? authManager.currentUser {
-                                ProfileInfoCard(
-                                    user: user,
-                                    isPro: purchaseManager.isPro,
-                                    totalCheckInDays: totalCheckInDays,
-                                    currentStreak: currentStreak,
-                                    badgeCount: badgeCount
-                                )
-                            }
+                        StatsCard(
+                            totalCheckInDays: totalCheckInDays,
+                            currentStreak: currentStreak,
+                            badgeCount: badgeCount
+                        )
 
-                            ProfileSupportCard(onTap: {
-                                showSupportSheet = true
-                            })
+                        ProfileSupportCard(onTap: { showSupportSheet = true })
 
-                            ProfileSettingsCard(
-                                notificationsEnabled: $notificationsEnabled,
-                                darkModeEnabled: $darkModeEnabled
-                            )
+                        ProfileSettingsCard(
+                            notificationsEnabled: $notificationsEnabled,
+                            darkModeEnabled: $darkModeEnabled
+                        )
 
-                            ProfileOtherCard(onFeedbackTap: {
-                                handleFeedbackTap()
-                            })
-
-                            LogoutButton {
-                                showLogoutAlert = true
-                            }
-                        } else {
-                            // 未登录状态
-                            NotLoggedInCard {
-                                showLoginSheet = true
-                            }
-                            
-                            ProfileSupportCard(onTap: { showSupportSheet = true })
-
-                            ProfileSettingsCard(
-                                notificationsEnabled: $notificationsEnabled,
-                                darkModeEnabled: $darkModeEnabled
-                            )
-
-                            ProfileOtherCard(onFeedbackTap: {
-                                handleFeedbackTap()
-                            })
-                        }
+                        ProfileOtherCard(onFeedbackTap: { handleFeedbackTap() })
 
                         HStack(spacing: 6) {
                             Text("喵记 v1.0.0")
@@ -101,9 +66,6 @@ struct ProfileView: View {
 
             }
             .toolbar(.hidden, for: .navigationBar)
-            .sheet(isPresented: $showLoginSheet) {
-                SignInView()
-            }
             .sheet(isPresented: $showSupportSheet) {
                 SupportDeveloperSheet()
             }
@@ -114,17 +76,6 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showPrivacySheet) {
                 PrivacyPolicySheet()
-            }
-            .alert("退出登录", isPresented: $showLogoutAlert) {
-                Button("取消", role: .cancel) {}
-                Button("确认退出", role: .destructive) {
-                    withAnimation {
-                        authManager.logout()
-                        currentUser = nil
-                    }
-                }
-            } message: {
-                Text("确定要退出当前账号吗？")
             }
             .sheet(isPresented: $showFeedbackConsentAlert) {
                 FeedbackConsentSheet(
@@ -139,17 +90,7 @@ struct ProfileView: View {
                 )
             }
             .task {
-                if authManager.isAuthenticated {
-                    currentUser = authManager.currentUser
-                }
                 await loadStats()
-            }
-            .onChange(of: authManager.isAuthenticated) { isAuthenticated in
-                if isAuthenticated {
-                    currentUser = authManager.currentUser
-                } else {
-                    currentUser = nil
-                }
             }
             .onChange(of: notificationsEnabled) { enabled in
                 if !enabled {
@@ -211,166 +152,69 @@ struct ProfileView: View {
     }
 }
 
-// MARK: - 未登录卡片
-struct NotLoggedInCard: View {
-    let onLogin: () -> Void
-    
+// MARK: - APP 宣传语卡片
+struct AppSloganBanner: View {
     var body: some View {
-        VStack(spacing: 20) {
-            // 图标
-            ZStack {
-                Circle()
-                    .fill(AppTheme.cardSecondary)
-                    .frame(width: 80, height: 80)
-                
-                Image(systemName: "person.crop.circle.badge.questionmark")
-                    .font(.system(size: 36))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [AppTheme.accentOrange, AppTheme.accentGold],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+        VStack(spacing: 12) {
+            HStack(spacing: 10) {
+                Image("LoginCat")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 48, height: 48)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(AppTheme.accentOrange.opacity(0.4), lineWidth: 2)
                     )
-            }
-            
-            VStack(spacing: 8) {
-                Text("还未登录")
-                    .font(.headline)
-                    .foregroundColor(AppTheme.textPrimary)
-                
-                Text("登录后可同步数据，解锁更多功能")
-                    .font(.subheadline)
-                    .foregroundColor(AppTheme.textSecondary)
-                    .multilineTextAlignment(.center)
-            }
-            
-            Button(action: onLogin) {
-                HStack(spacing: 8) {
-                    Image(systemName: "applelogo")
-                    Text("通过 Apple 登录")
-                        .fontWeight(.semibold)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("欢迎使用喵记")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(AppTheme.textPrimary)
+                    Text("记录每一天，遇见更好的自己")
+                        .font(.subheadline)
+                        .foregroundColor(AppTheme.textSecondary)
                 }
-                .font(.body)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(
-                    LinearGradient(
-                        colors: [AppTheme.accentOrange, Color(red: 0.95, green: 0.5, blue: 0.05)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .cornerRadius(14)
-                .shadow(color: AppTheme.accentOrange.opacity(0.3), radius: 8, x: 0, y: 4)
+                Spacer()
             }
+            .padding(20)
         }
-        .padding(24)
-        .background(AppTheme.card)
+        .frame(maxWidth: .infinity)
+        .background(
+            LinearGradient(
+                colors: [
+                    AppTheme.accentOrange.opacity(0.12),
+                    AppTheme.accentGold.opacity(0.06)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
         .cornerRadius(20)
-        .shadow(color: AppTheme.shadow, radius: 10, x: 0, y: 6)
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(AppTheme.accentOrange.opacity(0.2), lineWidth: 1)
+        )
+        .shadow(color: AppTheme.shadow.opacity(0.6), radius: 8, x: 0, y: 4)
     }
 }
 
-struct ProfileHeader: View {
-    var body: some View {
-        HStack {
-            Text("我的")
-                .font(.system(size: 24, weight: .bold))
-                .foregroundColor(AppTheme.textPrimary)
-
-            Spacer()
-
-            Image(systemName: "gearshape")
-                .font(.headline)
-                .foregroundColor(AppTheme.textSecondary)
-                .frame(width: 36, height: 36)
-                .background(AppTheme.cardSecondary)
-                .clipShape(Circle())
-        }
-    }
-}
-
-struct ProfileInfoCard: View {
-    let user: User
-    let isPro: Bool
+// MARK: - 统计卡片（仅数据）
+struct StatsCard: View {
     let totalCheckInDays: Int
     let currentStreak: Int
     let badgeCount: Int
 
     var body: some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 12) {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [AppTheme.accentOrange.opacity(0.3), AppTheme.accentGold.opacity(0.3)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 54, height: 54)
-                    .overlay(
-                        Text("🐱")
-                            .font(.system(size: 28))
-                    )
-
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Text(user.displayName)
-                            .font(.headline)
-                            .foregroundColor(AppTheme.textPrimary)
-
-                        Text(isPro ? "PRO 会员" : "普通会员")
-                            .font(.caption)
-                            .foregroundColor(AppTheme.accentOrange)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(AppTheme.cardSecondary)
-                            .cornerRadius(10)
-                    }
-
-                    HStack(spacing: 6) {
-                        Image(systemName: "applelogo")
-                            .foregroundColor(AppTheme.textSecondary)
-                        Text(user.email ?? maskAppleId(user.appleUserId))
-                            .font(.subheadline)
-                            .foregroundColor(AppTheme.textSecondary)
-                    }
-                }
-
-                Spacer()
-
-                Image(systemName: "pencil")
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-                    .frame(width: 28, height: 28)
-                    .background(AppTheme.accentOrange)
-                    .clipShape(Circle())
-            }
-
-            Divider()
-
-            HStack {
-                ProfileStatItem(value: "\(totalCheckInDays)", title: "累计打卡")
-                Spacer()
-                ProfileStatItem(value: "\(currentStreak)", title: "当前连续")
-                Spacer()
-                ProfileStatItem(value: "\(badgeCount)", title: "徽章数量")
-            }
+        HStack(spacing: 16) {
+            ProfileStatItem(value: "\(totalCheckInDays)", title: "累计打卡")
+            ProfileStatItem(value: "\(currentStreak)", title: "当前连续")
+            ProfileStatItem(value: "\(badgeCount)", title: "徽章数量")
         }
+        .frame(maxWidth: .infinity)
         .padding(16)
         .background(AppTheme.card)
         .cornerRadius(18)
         .shadow(color: AppTheme.shadow, radius: 8, x: 0, y: 4)
-    }
-    
-    private func maskAppleId(_ value: String) -> String {
-        guard value.count > 8 else { return value }
-        let start = value.prefix(4)
-        let end = value.suffix(4)
-        return "\(start)••••\(end)"
     }
 }
 
@@ -379,15 +223,16 @@ struct ProfileStatItem: View {
     let title: String
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 2) {
             Text(value)
-                .font(.headline)
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(AppTheme.textPrimary)
 
             Text(title)
-                .font(.footnote)
+                .font(.caption2)
                 .foregroundColor(AppTheme.textSecondary)
         }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -604,26 +449,6 @@ struct ProfileChevronRow: View {
     }
 }
 
-struct LogoutButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
-                Text("退出登录")
-                    .font(.headline)
-            }
-            .foregroundColor(Color(red: 0.86, green: 0.4, blue: 0.4))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(AppTheme.card)
-            .cornerRadius(18)
-            .shadow(color: AppTheme.shadow, radius: 8, x: 0, y: 4)
-        }
-    }
-}
-
 // MARK: - 隐私政策与用户协议（内置 WebView）
 struct PrivacyPolicySheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -738,7 +563,6 @@ struct SafariView: UIViewControllerRepresentable {
 
 #Preview {
     ProfileView()
-        .environmentObject(AuthManager.shared)
         .environmentObject(PurchaseManager())
         .environmentObject(PlanStore())
 }

@@ -30,7 +30,7 @@ struct MainTabView: View {
                 
                 ProfileView()
                     .tabItem {
-                        Label("我的", systemImage: "person")
+                        Label("设置", systemImage: "gearshape")
                     }
                     .tag(3)
             }
@@ -39,9 +39,6 @@ struct MainTabView: View {
             .toolbarBackground(.visible, for: .tabBar)
         }
         .accentColor(AppTheme.accentGreen)
-        .sheet(isPresented: $authManager.showLoginSheet) {
-            SignInView()
-        }
     }
 }
 

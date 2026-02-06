@@ -7,6 +7,8 @@ struct SignInView: View {
     
     @State private var errorMessage: String?
     @State private var showPrivacySheet = false
+    @State private var hasAgreedToPolicy = false
+    @State private var showAgreementAlert = false
 
     var body: some View {
         ZStack {
@@ -71,23 +73,44 @@ struct SignInView: View {
                     .cornerRadius(20)
                     .shadow(color: AppTheme.shadow, radius: 12, x: 0, y: 6)
                     
-                    SignInWithAppleButton(.signIn, onRequest: { request in
-                        request.requestedScopes = [.fullName, .email]
-                    }, onCompletion: { result in
-                        authManager.handleAuthorizationResult(result)
-                        if case .failure = result {
-                            errorMessage = "登录失败，请重试"
+                    Group {
+                        if hasAgreedToPolicy {
+                            SignInWithAppleButton(.signIn, onRequest: { request in
+                                request.requestedScopes = [.fullName, .email]
+                            }, onCompletion: { result in
+                                authManager.handleAuthorizationResult(result)
+                                if case .failure = result {
+                                    errorMessage = "登录失败，请重试"
+                                } else {
+                                    dismiss()
+                                }
+                            })
+                            .signInWithAppleButtonStyle(.black)
                         } else {
-                            dismiss()
+                            Button {
+                                showAgreementAlert = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "applelogo")
+                                    Text("使用 Apple 登录")
+                                        .fontWeight(.semibold)
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                            }
+                            .background(Color.black)
                         }
-                    })
-                    .signInWithAppleButtonStyle(.black)
+                    }
                     .frame(height: 48)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     
                     Button {
-                        authManager.loginAsGuest()
-                        dismiss()
+                        if hasAgreedToPolicy {
+                            authManager.loginAsGuest()
+                            dismiss()
+                        } else {
+                            showAgreementAlert = true
+                        }
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "person.crop.circle")
@@ -107,14 +130,31 @@ struct SignInView: View {
                 Spacer()
                 
                 // 底部协议
-                VStack(spacing: 8) {
-                    Text("登录即表示同意")
-                        .foregroundColor(AppTheme.textSecondary)
-                    Button("《隐私政策与用户协议》") {
-                        showPrivacySheet = true
+                VStack(spacing: 6) {
+                    HStack(alignment: .center, spacing: 8) {
+                        Button {
+                            hasAgreedToPolicy.toggle()
+                        } label: {
+                            Image(systemName: hasAgreedToPolicy ? "checkmark.square.fill" : "square")
+                                .foregroundColor(hasAgreedToPolicy ? AppTheme.accentOrange : AppTheme.textSecondary)
+                        }
+                        
+                        Text("我已阅读并同意")
+                            .font(.footnote)
+                            .foregroundColor(AppTheme.textSecondary)
+                        
+                        Button("《隐私政策与用户协议》") {
+                            showPrivacySheet = true
+                        }
+                        .font(.footnote)
+                        .foregroundColor(AppTheme.accentOrange)
                     }
-                    .font(.footnote)
-                    .foregroundColor(AppTheme.accentOrange)
+                    
+                    if !hasAgreedToPolicy {
+                        Text("请先阅读并勾选同意后再登录")
+                            .font(.caption2)
+                            .foregroundColor(.red)
+                    }
                 }
                 .padding(.bottom, 32)
             }
@@ -123,6 +163,9 @@ struct SignInView: View {
             PrivacyPolicySheet()
         }
         .animation(.spring(response: 0.3), value: errorMessage)
+        .alert("请先同意隐私政策与用户协议", isPresented: $showAgreementAlert) {
+            Button("好的", role: .cancel) { }
+        }
     }
 }
 
