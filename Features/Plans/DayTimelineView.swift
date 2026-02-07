@@ -21,7 +21,8 @@ struct DayTimelineView: View {
     
     private let hours = Array(0...23)
     private let hourHeight: CGFloat = 60
-    private let minuteStep: Int = 30
+    /// 框选时间步长：整点（60），点击某小时段内任意位置均从该小时 00 分开始
+    private let minuteStep: Int = 60
     private let dayEndMinute: Int = 24 * 60
     private let calendar = Calendar.current
     private let chinaCalendar: Calendar = {
