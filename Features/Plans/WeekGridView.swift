@@ -9,7 +9,8 @@ struct WeekGridView: View {
     private let calendar = Calendar.current
     private let hours = Array(0...23) // 全天 0:00 到 23:00
     private let timeColumnWidth: CGFloat = 48
-    private let rowHeight: CGFloat = 60
+    /// 每个时刻行高，缩小以缩短纵览总高度（原 60，现 40）
+    private let rowHeight: CGFloat = 40
     private let headerHeight: CGFloat = 52
     
     private var weekDates: [Date] {

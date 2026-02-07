@@ -6,28 +6,40 @@ enum CatStickerStyle {
     case peek
 }
 
+/// 各页面独立猫图资源名，可在 Assets 中分别替换
+enum CatPageIcon {
+    static let yearPlan = "CatYearPlan"   // 年度计划
+    static let monthPlan = "CatMonthPlan" // 月度计划
+    static let today = "CatToday"         // 今日
+    static let stats = "CatStats"         // 统计
+    static let settings = "CatSettings"   // 设置
+}
+
 struct CatStickerView: View {
     let style: CatStickerStyle
     let size: CGFloat
+    let imageName: String?
     @State private var float = false
     @State private var bounce = false
 
-    init(style: CatStickerStyle = .head, size: CGFloat = 44) {
+    init(style: CatStickerStyle = .head, size: CGFloat = 44, imageName: String? = nil) {
         self.style = style
         self.size = size
+        self.imageName = imageName
     }
 
     var body: some View {
         ZStack {
-            if let image = catImage(named: style == .head ? "CatHead" : "CatPeek") {
+            let resolvedName = imageName ?? (style == .head ? "CatHead" : "CatPeek")
+            if let image = catImage(named: resolvedName) {
                 CatImageView(
                     image: image,
-                    style: style,
+                    style: imageName != nil ? .head : style,
                     size: size,
                     isFloating: float
                 )
             } else {
-                if style == .peek {
+                if style == .peek && imageName == nil {
                     CatPaw()
                         .frame(width: size * 0.24, height: size * 0.18)
                         .offset(x: -size * 0.18, y: size * 0.28)
@@ -60,17 +72,19 @@ struct CatStickerView: View {
 struct CatStickerButton: View {
     let style: CatStickerStyle
     let size: CGFloat
+    let imageName: String?
     let action: () -> Void
 
-    init(style: CatStickerStyle = .head, size: CGFloat = 44, action: @escaping () -> Void) {
+    init(style: CatStickerStyle = .head, size: CGFloat = 44, imageName: String? = nil, action: @escaping () -> Void) {
         self.style = style
         self.size = size
+        self.imageName = imageName
         self.action = action
     }
 
     var body: some View {
         Button(action: action) {
-            CatStickerView(style: style, size: size)
+            CatStickerView(style: style, size: size, imageName: imageName)
                 .contentShape(Rectangle())
         }
         .buttonStyle(CatStickerPressStyle())

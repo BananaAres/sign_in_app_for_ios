@@ -239,7 +239,7 @@ struct MonthlyHeader: View {
             Spacer()
 
             ZStack(alignment: .topTrailing) {
-                CatStickerButton(style: .head, size: 48) {
+                CatStickerButton(size: 48, imageName: CatPageIcon.monthPlan) {
                     // TODO: 打开 AI 目标拆解
                 }
 

@@ -212,7 +212,7 @@ struct StatsHeader: View {
             Spacer()
 
             ZStack(alignment: .topTrailing) {
-                CatStickerButton(style: .peek, size: 50) {
+                CatStickerButton(size: 50, imageName: CatPageIcon.stats) {
                     // TODO: 打开 AI 目标拆解
                 }
 

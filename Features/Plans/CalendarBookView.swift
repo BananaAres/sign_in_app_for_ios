@@ -60,7 +60,7 @@ struct YearBookCoverView: View {
                     Spacer()
 
                     ZStack(alignment: .topTrailing) {
-                        CatStickerButton(style: .head, size: 48) {
+                        CatStickerButton(size: 48, imageName: CatPageIcon.yearPlan) {
                             // TODO: 打开 AI 目标拆解
                         }
 

@@ -208,7 +208,7 @@ private struct TodayHeader: View {
             }
 
             Spacer()
-            CatStickerButton(style: .peek, size: 50) {
+            CatStickerButton(size: 50, imageName: CatPageIcon.today) {
                 // TODO: 今日计划小助手
             }
         }

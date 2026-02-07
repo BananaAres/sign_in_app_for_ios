@@ -157,7 +157,7 @@ struct AppSloganBanner: View {
     var body: some View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
-                Image("LoginCat")
+                Image(CatPageIcon.settings)
                     .resizable()
                     .scaledToFit()
                     .frame(width: 48, height: 48)
