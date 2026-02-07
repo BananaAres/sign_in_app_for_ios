@@ -306,30 +306,50 @@ struct WeekPlanBlock: View {
         let clampedEnd = max(0, min(endMinuteValue, dayEndMinute))
         let durationMinutes = max(0, clampedEnd - startMinuteValue)
         let scaled = CGFloat(durationMinutes) / 60.0 * rowHeight
-        return max(scaled, 18)
+        return max(scaled, 2)
     }
-    
+
+    /// 高度 ≥ 此值：展示计划名 + 时间（约半小时 20pt 即会展示）
+    private let minHeightForTime: CGFloat = 18
+    /// 高度 ≥ 此值：至少展示计划名（或 ...）；低于此值什么都不展示
+    private let minHeightForTitle: CGFloat = 16
+
     private var displayTitle: String {
         String(plan.title.prefix(2))
     }
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(displayTitle)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                    .truncationMode(.tail)
-                
-                Text("\(plan.startTimeString)-\(endTimeLabel)")
-                    .font(.system(size: 8))
-                    .foregroundColor(.white.opacity(0.8))
-                    .lineLimit(1)
+            Group {
+                if height >= minHeightForTime {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(displayTitle)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                            .truncationMode(.tail)
+
+                        Text("\(plan.startTimeString)-\(endTimeLabel)")
+                            .font(.system(size: 8))
+                            .foregroundColor(.white.opacity(0.8))
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                } else if height >= minHeightForTitle {
+                    Text(displayTitle)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                } else {
+                    Color.clear
+                        .padding(4)
+                }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
             .frame(width: max(0, columnWidth - horizontalInset), alignment: .leading)
             .frame(height: height)
             .background(plan.color.gradient)

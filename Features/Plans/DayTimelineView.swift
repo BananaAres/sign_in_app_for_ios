@@ -14,7 +14,6 @@ struct DayTimelineView: View {
     @State private var selectionAnchorMinute: Int?
     @State private var currentDate: Date
     @State private var allPlans: [Plan]
-    @State private var activeDeletePlanId: String?
     @State private var editingPlan: Plan?
     @State private var pendingDeletePlan: Plan?
     @State private var showDeleteDialog = false
@@ -59,18 +58,9 @@ struct DayTimelineView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // 背景层 - 点击可以关闭删除动效
                 AppTheme.background
                     .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if activeDeletePlanId != nil {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                                activeDeletePlanId = nil
-                            }
-                        }
-                    }
-                
+
                 VStack(spacing: 16) {
                     TimelineHeader(title: dateString) {
                         dismiss()
@@ -78,15 +68,7 @@ struct DayTimelineView: View {
 
                     DayStripView(
                         selectedDate: currentDate,
-                        onSelect: { date in
-                            // 先关闭删除动效
-                            if activeDeletePlanId != nil {
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                                    activeDeletePlanId = nil
-                                }
-                            }
-                            shiftDate(to: date)
-                        }
+                        onSelect: { date in shiftDate(to: date) }
                     )
 
                     TimelineScrollView(
@@ -96,7 +78,6 @@ struct DayTimelineView: View {
                             // 检查登录状态
                             guard authManager.requireLogin() else { return }
                             if !isSelecting {
-                                activeDeletePlanId = nil
                                 isSelecting = true
                                 let anchor = minute(from: location, rounding: .down)
                                 selectionAnchorMinute = min(anchor, dayEndMinute - minuteStep)
@@ -138,22 +119,12 @@ struct DayTimelineView: View {
                             ZStack(alignment: .topLeading) {
                                 Color.clear
                                     .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        activeDeletePlanId = nil
-                                    }
 
                                 VStack(spacing: 0) {
                                     ForEach(hours, id: \.self) { hour in
                                         HourRow(hour: hour, height: hourHeight)
                                             .contentShape(Rectangle())
                                             .onTapGesture {
-                                                // 如果有活跃的删除状态，先关闭它
-                                                if activeDeletePlanId != nil {
-                                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                                                        activeDeletePlanId = nil
-                                                    }
-                                                    return
-                                                }
                                                 guard !isReadOnly else { return }
                                                 // 检查登录状态
                                                 guard authManager.requireLogin() else { return }
@@ -172,20 +143,12 @@ struct DayTimelineView: View {
                                         plan: plan,
                                         date: currentDate,
                                         hourHeight: hourHeight,
-                                        onDelete: {
-                                            requestDelete(plan)
-                                        },
-                                        onEdit: {
-                                            activeDeletePlanId = nil
-                                            editingPlan = plan
-                                        },
-                                        onToggleComplete: {
-                                            togglePlanCompletion(plan)
-                                        },
+                                        onDelete: { requestDelete(plan) },
+                                        onEdit: { editingPlan = plan },
+                                        onToggleComplete: { togglePlanCompletion(plan) },
                                         isSelecting: isSelecting,
                                         isReadOnly: isReadOnly,
-                                        canToggleComplete: canToggleCompletion,
-                                        activeDeletePlanId: $activeDeletePlanId
+                                        canToggleComplete: canToggleCompletion
                                     )
                                 }
 
@@ -217,15 +180,6 @@ struct DayTimelineView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    // 点击 VStack 的 padding 区域也关闭删除动效
-                    if activeDeletePlanId != nil {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                            activeDeletePlanId = nil
-                        }
-                    }
-                }
             }
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showCreatePlanSheet) {
@@ -403,9 +357,6 @@ struct DayTimelineView: View {
 
     private func requestDelete(_ plan: Plan) {
         guard !isReadOnly else { return }
-        if activeDeletePlanId == plan.id {
-            activeDeletePlanId = nil
-        }
         if plan.repeatGroupId != nil {
             pendingDeletePlan = plan
             showDeleteDialog = true
@@ -455,7 +406,6 @@ struct DayTimelineView: View {
         selectedEndMinute = nil
         selectionAnchorMinute = nil
         isSelecting = false
-        activeDeletePlanId = nil
     }
 }
 
@@ -587,7 +537,6 @@ struct PlanBlockView: View {
     let isSelecting: Bool
     let isReadOnly: Bool
     let canToggleComplete: Bool
-    @Binding var activeDeletePlanId: String?
     
     private let dayEndMinute: Int = 24 * 60
     
@@ -613,35 +562,69 @@ struct PlanBlockView: View {
         let start = CGFloat(startMinuteValue)
         let end = CGFloat(endMinuteValue)
         let minuteHeight = hourHeight / 60
-        return (end - start) * minuteHeight
+        let proportional = (end - start) * minuteHeight
+        return max(proportional, 2)
     }
 
+    /// 高度达到此值时展示「计划名+时间」（约半小计划 30pt 即会展示）
+    private let minHeightForTime: CGFloat = 26
+    /// 高度达到此值时至少展示计划名（不足则截断为...）；低于此值什么都不展示
+    private let minHeightForTitle: CGFloat = 18
+
     private var planCard: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text(plan.title)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white.opacity(plan.isCompleted ? 0.7 : 1))
-                    .strikethrough(plan.isCompleted, color: .white.opacity(0.8))
-                    .lineLimit(1)
+        Group {
+            if height >= minHeightForTime {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(plan.title)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white.opacity(plan.isCompleted ? 0.7 : 1))
+                            .strikethrough(plan.isCompleted, color: .white.opacity(0.8))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
 
-                Spacer(minLength: 4)
+                        Spacer(minLength: 4)
 
-                if plan.isCompleted {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.title3)
-                        .foregroundColor(.white.opacity(0.9))
+                        if plan.isCompleted {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.title3)
+                                .foregroundColor(.white.opacity(0.9))
+                        }
+                    }
+
+                    Text("\(plan.startTimeString) - \(endTimeLabel)")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(plan.isCompleted ? 0.6 : 0.8))
                 }
-            }
+                .padding(8)
+            } else if height >= minHeightForTitle {
+                HStack(spacing: 6) {
+                    Text(plan.title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white.opacity(plan.isCompleted ? 0.7 : 1))
+                        .strikethrough(plan.isCompleted, color: .white.opacity(0.8))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
-            Text("\(plan.startTimeString) - \(endTimeLabel)")
-                .font(.caption2)
-                .foregroundColor(.white.opacity(plan.isCompleted ? 0.6 : 0.8))
+                    Spacer(minLength: 4)
+
+                    if plan.isCompleted {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title3)
+                            .foregroundColor(.white.opacity(0.9))
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+            } else {
+                Color.clear
+                    .padding(4)
+            }
         }
-        .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: max(height, 40))
+        .frame(height: height)
         .background(plan.color.gradient.opacity(plan.isCompleted ? 0.55 : 1))
         .cornerRadius(8)
         .overlay(
@@ -652,91 +635,33 @@ struct PlanBlockView: View {
     }
     
     var body: some View {
-        let isActive = activeDeletePlanId == plan.id
-        
-        // 使用 VStack 来正确定位，顶部 padding 替代 offset
         VStack(spacing: 0) {
-            // 顶部空白区域，高度等于 topOffset（不接收触摸）
             Color.clear
                 .frame(height: topOffset)
                 .allowsHitTesting(false)
-            
-            // 实际的任务块内容
-            ZStack(alignment: .topTrailing) {
-                Group {
-                    if isActive {
-                        TimelineView(.animation) { context in
-                            let t = context.date.timeIntervalSinceReferenceDate
-                            let scale = 1 + 0.02 * sin(t * 2 * .pi / 1.4)
-                            planCard.scaleEffect(scale)
-                        }
-                    } else {
-                        planCard
+
+            planCard
+                .frame(height: height)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard !isReadOnly, canToggleComplete, !isSelecting else { return }
+                    onToggleComplete()
+                }
+                .contextMenu {
+                    Button(action: onEdit) {
+                        Label("编辑", systemImage: "pencil")
+                    }
+                    Button(role: .destructive, action: onDelete) {
+                        Label("删除", systemImage: "trash")
                     }
                 }
 
-                if isActive {
-                    VStack {
-                        Spacer()
-                        HStack(spacing: 0) {
-                            Button(action: onEdit) {
-                                Label("编辑", systemImage: "pencil")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            }
-                            .background(Color.black.opacity(0.55))
-                            
-                            Rectangle()
-                                .fill(Color.white.opacity(0.25))
-                                .frame(width: 1)
-                            
-                            Button(action: onDelete) {
-                                Label("删除", systemImage: "trash")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            }
-                            .background(Color.red.opacity(0.8))
-                        }
-                        .frame(height: 32)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 6)
-                    }
-                    .transition(.scale.combined(with: .opacity))
-                }
-            }
-            .frame(height: height)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                guard !isReadOnly, canToggleComplete, !isSelecting else { return }
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                    activeDeletePlanId = nil
-                }
-                onToggleComplete()
-            }
-            .highPriorityGesture(
-                LongPressGesture(minimumDuration: 0.35)
-                    .onEnded { _ in
-                        guard !isReadOnly, !isSelecting else { return }
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            if isActive {
-                                activeDeletePlanId = nil
-                            } else {
-                                activeDeletePlanId = plan.id
-                            }
-                        }
-                    }
-            )
-            
             Spacer(minLength: 0)
                 .allowsHitTesting(false)
         }
         .padding(.leading, 62)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .allowsHitTesting(true) // 只有中间的任务块区域接收触摸
+        .allowsHitTesting(true)
     }
 }
 
@@ -825,7 +750,8 @@ struct PlanEditorView: View {
     @State private var endMinuteValue: Int
     
     private let dayEndMinute: Int = 24 * 60
-    private let timeStep: Int = 1
+    /// 开始/结束时间分钟步长：5 分钟
+    private let timeStep: Int = 5
     private let calendar = Calendar.current
     private let chinaCalendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
@@ -1415,10 +1341,15 @@ struct TimelineTimePickerRow: View {
         String(format: "%02d:%02d", hour, minute)
     }
     
+    /// 分钟按 5 分钟步长舍入，用于弹窗初始值
+    private static func minuteRoundedToStep(_ m: Int) -> Int {
+        min(55, ((m + 2) / 5) * 5)
+    }
+
     var body: some View {
         Button(action: {
             tempHour = hour
-            tempMinute = minute
+            tempMinute = Self.minuteRoundedToStep(minute)
             showPicker = true
         }) {
             HStack {
@@ -1509,14 +1440,14 @@ private struct TimePickerSheet: View {
                     .font(.system(size: 28, weight: .medium))
                     .foregroundColor(AppTheme.textPrimary)
                 
-                // 分钟滚轮
+                // 分钟滚轮（5 分钟步长：0, 5, 10, …, 55）
                 Picker("分", selection: $minute) {
                     if hour == 24 {
                         Text("00")
                             .font(.system(size: 22, design: .monospaced))
                             .tag(0)
                     } else {
-                        ForEach(0...59, id: \.self) { m in
+                        ForEach(Array(stride(from: 0, through: 55, by: 5)), id: \.self) { m in
                             Text(String(format: "%02d", m))
                                 .font(.system(size: 22, design: .monospaced))
                                 .tag(m)

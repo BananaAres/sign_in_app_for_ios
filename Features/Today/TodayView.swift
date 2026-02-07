@@ -16,9 +16,9 @@ struct TodayView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                AppTheme.background
-                    .ignoresSafeArea()
+                ZStack {
+                    AppTheme.background
+                        .ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 18) {
