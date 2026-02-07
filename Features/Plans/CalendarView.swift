@@ -59,7 +59,7 @@ struct CalendarView: View {
 
                         MonthlyGoalsCard(
                             completedCount: completedMonthGoals,
-                            totalCount: max(monthPlanItems.count, 5),
+                            totalCount: monthPlanItems.count,
                             items: $monthPlanItems,
                             isExpanded: $isMonthGoalsExpanded,
                             onToggle: {
@@ -272,7 +272,7 @@ struct MonthlyGoalsCard: View {
                                 .font(.headline)
                                 .foregroundColor(AppTheme.textPrimary)
 
-                            Text("\(min(completedCount, totalCount))/\(totalCount) 已完成")
+                            Text(totalCount == 0 ? "暂无目标" : "\(min(completedCount, totalCount))/\(totalCount) 已完成")
                                 .font(.subheadline)
                                 .foregroundColor(AppTheme.textSecondary)
                         }
